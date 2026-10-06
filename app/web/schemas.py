@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Literal
 from pydantic import BaseModel, Field
 
 
@@ -93,10 +93,13 @@ class ScenarioCompareRequest(BaseModel):
 
 
 class ShadowStartRequest(BaseModel):
+    initialization_mode: Literal["soc", "energy", "temp"] = Field(
+        default="soc", description="Single physical source of truth: 'soc', 'energy', or 'temp'"
+    )
     initial_soc_percent: float | None = Field(default=50.0, ge=0.0, le=100.0)
     initial_energy_kwh: float | None = Field(default=None, ge=0.0, le=15.0)
     initial_temp_c: float | None = Field(default=None, ge=80.0, le=300.0)
-    process_demand_kw: float = Field(default=1.5, ge=0.0)
+    process_demand_kw: float = Field(default=1.5, ge=0.0, le=20.0)
     process_enabled: bool = Field(default=True)
 
 

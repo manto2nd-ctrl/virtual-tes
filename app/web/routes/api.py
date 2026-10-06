@@ -743,29 +743,79 @@ _shadow_service = ShadowRuntimeService()
 
 
 @api_router.post("/shadow/start")
-def shadow_start(
-    req: ShadowStartRequest,
+async def shadow_start(
     request: Request,
     _admin: UserSession = Depends(require_admin),
     db: Session = Depends(get_db),
 ):
     """Start or reinitialize the live Virtual TES shadow runtime. Requires ADMIN role."""
-    sess = _shadow_service.start_session(
-        db=db,
-        initial_soc_percent=req.initial_soc_percent,
-        initial_energy_kwh=req.initial_energy_kwh,
-        initial_temp_c=req.initial_temp_c,
-        process_demand_kw=req.process_demand_kw,
-        process_enabled=req.process_enabled,
-    )
+    content_type = request.headers.get("content-type", "")
+    if "application/json" in content_type:
+        try:
+            body = await request.json()
+            req = ShadowStartRequest(**body)
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=f"Invalid request JSON: {exc}")
+    else:
+        # Form submission (e.g. from HTMX hx-post or standard HTML form)
+        form_data = await request.form()
+        data = dict(form_data)
+        mode = data.get("initialization_mode", "soc")
+
+        def _get_float(name: str) -> float | None:
+            raw = data.get(name)
+            if raw is None or raw == "":
+                return None
+            try:
+                return float(raw)
+            except (ValueError, TypeError):
+                raise HTTPException(status_code=400, detail=f"Invalid numeric value for {name}: {raw}")
+
+        demand = _get_float("process_demand_kw")
+        if demand is None:
+            demand = 1.5
+        enabled = str(data.get("process_enabled", "true")).lower() in ("true", "1", "on", "yes")
+
+        req = ShadowStartRequest(
+            initialization_mode=mode,
+            initial_soc_percent=_get_float("initial_soc_percent"),
+            initial_energy_kwh=_get_float("initial_energy_kwh"),
+            initial_temp_c=_get_float("initial_temp_c"),
+            process_demand_kw=demand,
+            process_enabled=enabled,
+        )
+
+    try:
+        sess = _shadow_service.start_session(
+            db=db,
+            initial_soc_percent=req.initial_soc_percent,
+            initial_energy_kwh=req.initial_energy_kwh,
+            initial_temp_c=req.initial_temp_c,
+            initialization_mode=req.initialization_mode,
+            process_demand_kw=req.process_demand_kw,
+            process_enabled=req.process_enabled,
+        )
+    except ValueError as ve:
+        raise HTTPException(status_code=400, detail=str(ve))
+
     if "HX-Request" in request.headers:
         state = _shadow_service.get_live_dashboard_state(db)
-        return templates.TemplateResponse(
+        resp = templates.TemplateResponse(
             request=request,
             name="components/shadow_runtime_card.html",
             context={"request": request, "shadow": state, "user": _admin},
         )
-    return {"status": "ok", "session_id": sess.id, "state": sess.status}
+        resp.headers["HX-Trigger"] = "shadowStarted"
+        return resp
+
+    return {
+        "status": "ok",
+        "session_id": sess.id,
+        "state": sess.status,
+        "initial_soc_fraction": sess.initial_soc_fraction,
+        "initial_stored_energy_kwh": sess.initial_stored_energy_kwh,
+        "initial_sand_temperature_c": sess.initial_sand_temperature_c,
+    }
 
 
 @api_router.post("/shadow/pause")
@@ -823,13 +873,22 @@ def shadow_stop(
 
 
 @api_router.post("/shadow/reset")
-def shadow_reset(
-    req: ShadowResetRequest,
+async def shadow_reset(
     request: Request,
     _admin: UserSession = Depends(require_admin),
     db: Session = Depends(get_db),
 ):
     """Reset physical virtual state with an immutable audit event. Requires ADMIN role."""
+    content_type = request.headers.get("content-type", "")
+    if "application/json" in content_type:
+        body = await request.json()
+        req = ShadowResetRequest(**body)
+    else:
+        form = await request.form()
+        target_soc = float(form.get("target_soc_percent", 50.0))
+        reason = str(form.get("reason", "MANUAL_RESET"))
+        req = ShadowResetRequest(target_soc_percent=target_soc, reason=reason)
+
     sess = _shadow_service.reset_state(db=db, target_soc_percent=req.target_soc_percent, reason=req.reason)
     if "HX-Request" in request.headers:
         state = _shadow_service.get_live_dashboard_state(db)

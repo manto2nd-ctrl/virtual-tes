@@ -1,0 +1,484 @@
+<!-- Component: Shadow TES Operational Modals (Phase 5.8.2 / 5.9 Resilient Modals) -->
+<!-- Placed outside the 5-second HTMX polling container to prevent DOM replacement bugs -->
+
+<style>
+  .shadow-dialog {
+    border: none;
+    border-radius: 8px;
+    max-width: 520px;
+    width: 92%;
+    padding: 0;
+    box-shadow: 0 20px 40px rgba(0, 0, 0, 0.35);
+    background: #ffffff;
+    color: #0f172a;
+    margin: auto;
+  }
+  .shadow-dialog::backdrop {
+    background: rgba(15, 23, 42, 0.65);
+    backdrop-filter: blur(2px);
+  }
+  .modal-wrapper {
+    padding: 24px;
+  }
+  .derived-field {
+    background-color: #f1f5f9 !important;
+    color: #475569 !important;
+    border-color: #cbd5e1 !important;
+    cursor: not-allowed;
+  }
+  .editable-field {
+    background-color: #ffffff !important;
+    color: #0f172a !important;
+    border-color: #94a3b8 !important;
+    cursor: text;
+  }
+  .mode-badge {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 0.72rem;
+    font-weight: 700;
+    text-transform: uppercase;
+  }
+</style>
+
+<!-- START SHADOW MODAL -->
+<dialog id="start-modal" class="shadow-dialog">
+  <div class="modal-wrapper">
+    <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 12px;">
+      <div>
+        <h3 style="margin: 0; font-size: 1.2rem; font-weight: 700; color: #0f172a;">Start Virtual TES Shadow Plant</h3>
+        <p style="margin: 2px 0 0 0; font-size: 0.78rem; color: #64748b;">Autonomous Receding-Horizon Shadow Digital Twin</p>
+      </div>
+      <button type="button" onclick="closeStartModal()" style="background: none; border: none; font-size: 1.4rem; color: #94a3b8; cursor: pointer; line-height: 1;" aria-label="Close">&times;</button>
+    </div>
+
+    <div style="background: #eff6ff; border-left: 3px solid #2563eb; padding: 10px 14px; font-size: 0.78rem; color: #1e40af; margin-bottom: 16px; border-radius: 0 4px 4px 0;">
+      <div style="font-weight: 700; margin-bottom: 2px;">VIRTUAL INITIAL CONDITION — NOT PHYSICALLY MEASURED</div>
+      <div>Specify the starting physical state. All thermal state variables are physically coupled by the analytical <code>ThermalStateMapper</code> model.</div>
+    </div>
+
+    <!-- Error message container -->
+    <div id="start-modal-error" style="display: none; background: #fef2f2; border: 1px solid #fecaca; color: #b91c1c; padding: 10px 14px; border-radius: 4px; font-size: 0.82rem; margin-bottom: 16px; font-weight: 600;"></div>
+
+    <form id="start-shadow-form" onsubmit="handleStartShadowSubmit(event)">
+      <!-- 1. Initialization Mode Selector -->
+      <div style="margin-bottom: 16px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 12px;">
+        <label style="font-weight: 700; font-size: 0.8rem; color: #334155; display: block; margin-bottom: 8px;">
+          Initialize shadow state by (Single Physical Source of Truth):
+        </label>
+        <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px;">
+          <label style="display: flex; align-items: center; gap: 6px; cursor: pointer; font-size: 0.82rem;">
+            <input type="radio" name="initialization_mode" value="soc" checked onchange="handleModeChange('soc')">
+            <span><strong>SOC (%)</strong></span>
+          </label>
+          <label style="display: flex; align-items: center; gap: 6px; cursor: pointer; font-size: 0.82rem;">
+            <input type="radio" name="initialization_mode" value="energy" onchange="handleModeChange('energy')">
+            <span>Energy (kWh)</span>
+          </label>
+          <label style="display: flex; align-items: center; gap: 6px; cursor: pointer; font-size: 0.82rem;">
+            <input type="radio" name="initialization_mode" value="temp" onchange="handleModeChange('temp')">
+            <span>Temp (°C)</span>
+          </label>
+        </div>
+      </div>
+
+      <!-- 2. Thermal State Input Fields (Mutually Consistent via ThermalStateMapper) -->
+      <div style="margin-bottom: 16px;">
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 12px;">
+          <div>
+            <label id="lbl-start-soc" for="start-soc" style="font-size: 0.78rem; font-weight: 600; color: #334155; display: flex; justify-content: space-between;">
+              <span>Initial SOC (%)</span>
+              <span id="badge-start-soc" class="mode-badge" style="background: #dbeafe; color: #1e40af;">Canonical</span>
+            </label>
+            <input type="number" id="start-soc" name="initial_soc_percent" class="form-input editable-field" min="0" max="100" step="0.1" value="50.0" oninput="handleFieldInput('soc')" required style="width: 100%; margin-top: 4px; padding: 7px 10px; border-radius: 4px; font-size: 0.88rem;">
+          </div>
+          <div>
+            <label id="lbl-start-energy" for="start-energy" style="font-size: 0.78rem; font-weight: 600; color: #334155; display: flex; justify-content: space-between;">
+              <span>Stored Energy (kWh)</span>
+              <span id="badge-start-energy" class="mode-badge" style="background: #e2e8f0; color: #475569;">Derived</span>
+            </label>
+            <input type="number" id="start-energy" name="initial_energy_kwh" class="form-input derived-field" min="0" max="15" step="0.01" value="7.50" readonly oninput="handleFieldInput('energy')" style="width: 100%; margin-top: 4px; padding: 7px 10px; border-radius: 4px; font-size: 0.88rem;">
+          </div>
+        </div>
+
+        <div>
+          <label id="lbl-start-temp" for="start-temp" style="font-size: 0.78rem; font-weight: 600; color: #334155; display: flex; justify-content: space-between;">
+            <span>Sand Bulk Temperature (°C)</span>
+            <span id="badge-start-temp" class="mode-badge" style="background: #e2e8f0; color: #475569;">Derived</span>
+          </label>
+          <input type="number" id="start-temp" name="initial_temp_c" class="form-input derived-field" min="80" max="300" step="0.1" value="196.8" readonly oninput="handleFieldInput('temp')" style="width: 100%; margin-top: 4px; padding: 7px 10px; border-radius: 4px; font-size: 0.88rem;">
+          <div style="font-size: 0.72rem; color: #64748b; margin-top: 3px;">
+            Enthalpy range: 80.0 °C (0% SOC) to 300.0 °C (100% SOC). Cp(T) = T_K + 427 J/(kg·K).
+          </div>
+        </div>
+      </div>
+
+      <!-- 3. Virtual Process Heat Demand (Dryer) -->
+      <div style="margin-bottom: 20px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 12px;">
+        <label style="font-weight: 700; font-size: 0.8rem; color: #334155; display: block; margin-bottom: 8px;">
+          Virtual Process Heat Demand (Simulated Dryer Load)
+        </label>
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; align-items: center;">
+          <div>
+            <label for="start-demand" style="font-size: 0.75rem; color: #64748b;">Heat Demand (kW)</label>
+            <input type="number" id="start-demand" name="process_demand_kw" class="form-input" min="0" max="10" step="0.1" value="1.50" required style="width: 100%; margin-top: 3px; padding: 7px 10px; border-radius: 4px; font-size: 0.88rem;">
+          </div>
+          <div>
+            <label style="font-size: 0.75rem; color: #64748b; display: block; margin-bottom: 6px;">Process Actuation</label>
+            <label style="display: flex; align-items: center; gap: 8px; font-size: 0.85rem; cursor: pointer; font-weight: 600; color: #1e293b;">
+              <input type="checkbox" id="start-process-enabled" name="process_enabled" checked style="width: 16px; height: 16px;">
+              <span>Enable Virtual Process</span>
+            </label>
+          </div>
+        </div>
+      </div>
+
+      <!-- 4. Modal Actions -->
+      <div style="display: flex; justify-content: flex-end; gap: 10px; padding-top: 8px; border-top: 1px solid #e2e8f0;">
+        <button type="button" id="start-cancel-btn" class="btn btn-outline" onclick="closeStartModal()" style="padding: 8px 18px; font-size: 0.88rem; font-weight: 600; cursor: pointer;">
+          Cancel
+        </button>
+        <button type="submit" id="start-submit-btn" class="btn btn-primary" style="background: #16a34a; border-color: #16a34a; padding: 8px 22px; font-size: 0.88rem; font-weight: 700; color: white; cursor: pointer; min-width: 140px;">
+          Start Shadow
+        </button>
+      </div>
+    </form>
+  </div>
+</dialog>
+
+<!-- RESET SHADOW MODAL -->
+<dialog id="reset-modal" class="shadow-dialog">
+  <div class="modal-wrapper">
+    <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 12px;">
+      <div>
+        <h3 style="margin: 0; font-size: 1.2rem; font-weight: 700; color: #dc2626;">Reset Virtual TES State</h3>
+        <p style="margin: 2px 0 0 0; font-size: 0.78rem; color: #64748b;">Explicit Physical Reinitialization</p>
+      </div>
+      <button type="button" onclick="closeResetModal()" style="background: none; border: none; font-size: 1.4rem; color: #94a3b8; cursor: pointer; line-height: 1;" aria-label="Close">&times;</button>
+    </div>
+
+    <div style="background: #fff1f2; border-left: 3px solid #dc2626; padding: 10px 14px; font-size: 0.78rem; color: #991b1b; margin-bottom: 16px; border-radius: 0 4px 4px 0;">
+      Requires explicit confirmation. Resets current SOC and temperature. Past interval history is <strong>preserved</strong> and never deleted.
+    </div>
+
+    <div id="reset-modal-error" style="display: none; background: #fef2f2; border: 1px solid #fecaca; color: #b91c1c; padding: 10px 14px; border-radius: 4px; font-size: 0.82rem; margin-bottom: 16px; font-weight: 600;"></div>
+
+    <form id="reset-shadow-form" onsubmit="handleResetShadowSubmit(event)">
+      <div style="margin-bottom: 14px;">
+        <label for="reset-soc" style="font-size: 0.8rem; font-weight: 600; color: #334155; display: block; margin-bottom: 4px;">
+          Target Reset SOC (%)
+        </label>
+        <input type="number" id="reset-soc" name="target_soc_percent" class="form-input" min="0" max="100" step="1" value="50" required style="width: 100%; padding: 7px 10px; border-radius: 4px; font-size: 0.88rem;">
+      </div>
+
+      <div style="margin-bottom: 20px;">
+        <label for="reset-reason" style="font-size: 0.8rem; font-weight: 600; color: #334155; display: block; margin-bottom: 4px;">
+          Audit Reason for Reset
+        </label>
+        <input type="text" id="reset-reason" name="reason" class="form-input" value="MANUAL_ENGINEERING_RESET" required style="width: 100%; padding: 7px 10px; border-radius: 4px; font-size: 0.88rem;">
+      </div>
+
+      <div style="display: flex; justify-content: flex-end; gap: 10px; padding-top: 8px; border-top: 1px solid #e2e8f0;">
+        <button type="button" class="btn btn-outline" onclick="closeResetModal()" style="padding: 8px 18px; font-size: 0.88rem; font-weight: 600; cursor: pointer;">
+          Cancel
+        </button>
+        <button type="submit" id="reset-submit-btn" class="btn btn-primary" style="background: #dc2626; border-color: #dc2626; padding: 8px 22px; font-size: 0.88rem; font-weight: 700; color: white; cursor: pointer; min-width: 140px;">
+          Confirm Reset
+        </button>
+      </div>
+    </form>
+  </div>
+</dialog>
+
+<!-- ROBUST CLIENT-SIDE THERMAL CALCULATIONS & MODAL LOGIC -->
+<script>
+// Physical constants from ThermalStateMapper domain model
+const THERMAL_H_MIN = 213152.51125;
+const THERMAL_DELTA_H = 195833.0;
+const THERMAL_FULL_CAP_KWH = 15.0;
+
+function tempFromSocFrac(s) {
+  const clamped = Math.max(0.0, Math.min(1.0, s));
+  const h = THERMAL_H_MIN + clamped * THERMAL_DELTA_H;
+  const tk = -427.0 + Math.sqrt(427.0 * 427.0 + 2.0 * h);
+  return tk - 273.15;
+}
+
+function socFracFromTemp(t) {
+  const tk = Math.max(80.0, Math.min(300.0, t)) + 273.15;
+  const h = 0.5 * tk * tk + 427.0 * tk;
+  const frac = (h - THERMAL_H_MIN) / THERMAL_DELTA_H;
+  return Math.max(0.0, Math.min(1.0, frac));
+}
+
+function handleModeChange(mode) {
+  const socInput = document.getElementById('start-soc');
+  const energyInput = document.getElementById('start-energy');
+  const tempInput = document.getElementById('start-temp');
+
+  const badgeSoc = document.getElementById('badge-start-soc');
+  const badgeEnergy = document.getElementById('badge-start-energy');
+  const badgeTemp = document.getElementById('badge-start-temp');
+
+  // Reset visual styles
+  [socInput, energyInput, tempInput].forEach(inp => {
+    inp.readOnly = true;
+    inp.classList.remove('editable-field');
+    inp.classList.add('derived-field');
+  });
+
+  badgeSoc.innerText = 'Derived';
+  badgeSoc.style.background = '#e2e8f0';
+  badgeSoc.style.color = '#475569';
+
+  badgeEnergy.innerText = 'Derived';
+  badgeEnergy.style.background = '#e2e8f0';
+  badgeEnergy.style.color = '#475569';
+
+  badgeTemp.innerText = 'Derived';
+  badgeTemp.style.background = '#e2e8f0';
+  badgeTemp.style.color = '#475569';
+
+  if (mode === 'soc') {
+    socInput.readOnly = false;
+    socInput.classList.remove('derived-field');
+    socInput.classList.add('editable-field');
+    badgeSoc.innerText = 'Canonical';
+    badgeSoc.style.background = '#dbeafe';
+    badgeSoc.style.color = '#1e40af';
+    handleFieldInput('soc');
+  } else if (mode === 'energy') {
+    energyInput.readOnly = false;
+    energyInput.classList.remove('derived-field');
+    energyInput.classList.add('editable-field');
+    badgeEnergy.innerText = 'Canonical';
+    badgeEnergy.style.background = '#dbeafe';
+    badgeEnergy.style.color = '#1e40af';
+    handleFieldInput('energy');
+  } else if (mode === 'temp') {
+    tempInput.readOnly = false;
+    tempInput.classList.remove('derived-field');
+    tempInput.classList.add('editable-field');
+    badgeTemp.innerText = 'Canonical';
+    badgeTemp.style.background = '#dbeafe';
+    badgeTemp.style.color = '#1e40af';
+    handleFieldInput('temp');
+  }
+}
+
+function handleFieldInput(source) {
+  const socInput = document.getElementById('start-soc');
+  const energyInput = document.getElementById('start-energy');
+  const tempInput = document.getElementById('start-temp');
+
+  if (source === 'soc') {
+    const socPct = parseFloat(socInput.value) || 0.0;
+    const socFrac = Math.max(0.0, Math.min(1.0, socPct / 100.0));
+    energyInput.value = (socFrac * THERMAL_FULL_CAP_KWH).toFixed(2);
+    tempInput.value = tempFromSocFrac(socFrac).toFixed(1);
+  } else if (source === 'energy') {
+    const energyKwh = parseFloat(energyInput.value) || 0.0;
+    const socFrac = Math.max(0.0, Math.min(1.0, energyKwh / THERMAL_FULL_CAP_KWH));
+    socInput.value = (socFrac * 100.0).toFixed(1);
+    tempInput.value = tempFromSocFrac(socFrac).toFixed(1);
+  } else if (source === 'temp') {
+    const tempC = parseFloat(tempInput.value) || 80.0;
+    const socFrac = socFracFromTemp(tempC);
+    socInput.value = (socFrac * 100.0).toFixed(1);
+    energyInput.value = (socFrac * THERMAL_FULL_CAP_KWH).toFixed(2);
+  }
+}
+
+// Modal Open / Close Handlers (Resilient across all browsers)
+function openStartModal() {
+  const modal = document.getElementById('start-modal');
+  if (!modal) return;
+  const errBox = document.getElementById('start-modal-error');
+  if (errBox) { errBox.style.display = 'none'; errBox.innerText = ''; }
+  const btn = document.getElementById('start-submit-btn');
+  if (btn) { btn.disabled = false; btn.innerHTML = 'Start Shadow'; }
+
+  // Set default starting condition: SOC = 50.0%
+  const radioSoc = document.querySelector('input[name="initialization_mode"][value="soc"]');
+  if (radioSoc) radioSoc.checked = true;
+  document.getElementById('start-soc').value = '50.0';
+  document.getElementById('start-demand').value = '1.50';
+  document.getElementById('start-process-enabled').checked = true;
+  handleModeChange('soc');
+
+  if (typeof modal.showModal === 'function') {
+    try { modal.showModal(); } catch (e) { modal.style.display = 'block'; }
+  } else {
+    modal.style.display = 'block';
+  }
+}
+
+function closeStartModal() {
+  const modal = document.getElementById('start-modal');
+  if (!modal) return;
+  if (typeof modal.close === 'function') {
+    try { modal.close(); } catch (e) { modal.style.display = 'none'; }
+  } else {
+    modal.style.display = 'none';
+  }
+}
+
+function openResetModal() {
+  const modal = document.getElementById('reset-modal');
+  if (!modal) return;
+  const errBox = document.getElementById('reset-modal-error');
+  if (errBox) { errBox.style.display = 'none'; errBox.innerText = ''; }
+  const btn = document.getElementById('reset-submit-btn');
+  if (btn) { btn.disabled = false; btn.innerHTML = 'Confirm Reset'; }
+  if (typeof modal.showModal === 'function') {
+    try { modal.showModal(); } catch (e) { modal.style.display = 'block'; }
+  } else {
+    modal.style.display = 'block';
+  }
+}
+
+function closeResetModal() {
+  const modal = document.getElementById('reset-modal');
+  if (!modal) return;
+  if (typeof modal.close === 'function') {
+    try { modal.close(); } catch (e) { modal.style.display = 'none'; }
+  } else {
+    modal.style.display = 'none';
+  }
+}
+
+// Close dialogs when clicking backdrop
+document.addEventListener('click', function(e) {
+  const startModal = document.getElementById('start-modal');
+  const resetModal = document.getElementById('reset-modal');
+  if (e.target === startModal) closeStartModal();
+  if (e.target === resetModal) closeResetModal();
+});
+
+// Start Shadow Form Submission
+async function handleStartShadowSubmit(e) {
+  e.preventDefault();
+  const btn = document.getElementById('start-submit-btn');
+  const errBox = document.getElementById('start-modal-error');
+
+  if (btn) {
+    btn.disabled = true;
+    btn.innerHTML = '⏳ STARTING...';
+  }
+  if (errBox) {
+    errBox.style.display = 'none';
+    errBox.innerText = '';
+  }
+
+  const modeRadio = document.querySelector('input[name="initialization_mode"]:checked');
+  const mode = modeRadio ? modeRadio.value : 'soc';
+
+  const payload = {
+    initialization_mode: mode,
+    initial_soc_percent: mode === 'soc' ? (parseFloat(document.getElementById('start-soc').value) || 50.0) : null,
+    initial_energy_kwh: mode === 'energy' ? (parseFloat(document.getElementById('start-energy').value) || 7.50) : null,
+    initial_temp_c: mode === 'temp' ? (parseFloat(document.getElementById('start-temp').value) || 196.8) : null,
+    process_demand_kw: parseFloat(document.getElementById('start-demand').value) || 1.50,
+    process_enabled: document.getElementById('start-process-enabled').checked,
+  };
+
+  try {
+    const res = await fetch('/api/shadow/start', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json'
+      },
+      body: JSON.stringify(payload)
+    });
+
+    const data = await res.json();
+    if (res.ok && data.status === 'ok') {
+      closeStartModal();
+      // Instantly reload to show newly running state
+      window.location.reload();
+    } else {
+      const msg = data.detail || data.message || 'Server error starting shadow plant.';
+      if (errBox) {
+        errBox.innerText = typeof msg === 'string' ? msg : JSON.stringify(msg);
+        errBox.style.display = 'block';
+      } else {
+        alert('Error: ' + msg);
+      }
+      if (btn) {
+        btn.disabled = false;
+        btn.innerHTML = 'Start Shadow';
+      }
+    }
+  } catch (err) {
+    console.error('Network error starting shadow:', err);
+    if (errBox) {
+      errBox.innerText = 'Network connection failed: ' + (err.message || 'Could not connect to server.');
+      errBox.style.display = 'block';
+    }
+    if (btn) {
+      btn.disabled = false;
+      btn.innerHTML = 'Start Shadow';
+    }
+  }
+}
+
+// Reset Shadow Form Submission
+async function handleResetShadowSubmit(e) {
+  e.preventDefault();
+  const btn = document.getElementById('reset-submit-btn');
+  const errBox = document.getElementById('reset-modal-error');
+
+  if (btn) {
+    btn.disabled = true;
+    btn.innerHTML = '⏳ RESETTING...';
+  }
+  if (errBox) {
+    errBox.style.display = 'none';
+    errBox.innerText = '';
+  }
+
+  const payload = {
+    target_soc_percent: parseFloat(document.getElementById('reset-soc').value) || 50.0,
+    reason: document.getElementById('reset-reason').value || 'MANUAL_RESET'
+  };
+
+  try {
+    const res = await fetch('/api/shadow/reset', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json'
+      },
+      body: JSON.stringify(payload)
+    });
+
+    const data = await res.json();
+    if (res.ok && data.status === 'ok') {
+      closeResetModal();
+      window.location.reload();
+    } else {
+      const msg = data.detail || data.message || 'Server error resetting state.';
+      if (errBox) {
+        errBox.innerText = typeof msg === 'string' ? msg : JSON.stringify(msg);
+        errBox.style.display = 'block';
+      }
+      if (btn) {
+        btn.disabled = false;
+        btn.innerHTML = 'Confirm Reset';
+      }
+    }
+  } catch (err) {
+    console.error('Network error resetting shadow:', err);
+    if (errBox) {
+      errBox.innerText = 'Network connection failed: ' + (err.message || 'Could not connect to server.');
+      errBox.style.display = 'block';
+    }
+    if (btn) {
+      btn.disabled = false;
+      btn.innerHTML = 'Confirm Reset';
+    }
+  }
+}
+</script>

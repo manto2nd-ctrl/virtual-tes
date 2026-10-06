@@ -117,24 +117,44 @@ class ShadowRuntimeService:
         initial_soc_percent: float | None = None,
         initial_energy_kwh: float | None = None,
         initial_temp_c: float | None = None,
+        initialization_mode: str | None = None,
     ) -> tuple[float, float, float]:
-        """Convert any of (SOC %, energy kWh, temp °C) to canonical (fraction, kWh, °C)."""
+        """Convert single chosen canonical source of truth to (fraction, kWh, °C).
+
+        Backend recalculates all derived values using ThermalStateMapper and TESParameters.
+        Contradictory values from other non-canonical inputs are ignored.
+        """
         full_cap = self.tes_params.thermal_capacity_full_span_kwh
 
-        if initial_soc_percent is not None:
-            frac = max(0.0, min(1.0, float(initial_soc_percent) / 100.0))
+        if initialization_mode is not None:
+            mode = initialization_mode.lower().strip()
+        else:
+            if initial_temp_c is not None and initial_soc_percent is None and initial_energy_kwh is None:
+                mode = "temp"
+            elif initial_energy_kwh is not None and initial_soc_percent is None:
+                mode = "energy"
+            else:
+                mode = "soc"
+
+        if mode == "soc":
+            val = 50.0 if initial_soc_percent is None else float(initial_soc_percent)
+            frac = max(0.0, min(1.0, val / 100.0))
             kwh = frac * full_cap
             temp = self.thermal_mapper.temperature_from_soc_fraction(frac)
-        elif initial_energy_kwh is not None:
-            kwh = max(0.0, min(full_cap, float(initial_energy_kwh)))
+        elif mode == "energy":
+            val = (0.5 * full_cap) if initial_energy_kwh is None else float(initial_energy_kwh)
+            kwh = max(0.0, min(full_cap, val))
             frac = kwh / full_cap if full_cap > 0 else 0.0
             temp = self.thermal_mapper.temperature_from_soc_fraction(frac)
-        elif initial_temp_c is not None:
-            temp = max(80.0, min(300.0, float(initial_temp_c)))
+        elif mode == "temp":
+            t_min = self.thermal_mapper.t_min_c
+            t_max = self.thermal_mapper.t_max_c
+            val = 196.77 if initial_temp_c is None else float(initial_temp_c)
+            temp = max(t_min, min(t_max, val))
             frac = self.thermal_mapper.soc_fraction_from_temperature(temp)
             kwh = frac * full_cap
         else:
-            # Reference default: 50% SOC
+            # Fallback to SOC default (50%)
             frac = 0.50
             kwh = frac * full_cap
             temp = self.thermal_mapper.temperature_from_soc_fraction(frac)
@@ -157,7 +177,7 @@ class ShadowRuntimeService:
             return latest
 
         # Create fresh session in STOPPED state
-        init_frac, init_kwh, init_temp = self.convert_initial_conditions(50.0)
+        init_frac, init_kwh, init_temp = self.convert_initial_conditions(initial_soc_percent=50.0, initialization_mode="soc")
         now = utcnow()
         new_sess = ShadowTESSession(
             id=str(uuid.uuid4()),
@@ -186,6 +206,7 @@ class ShadowRuntimeService:
         initial_soc_percent: float | None = None,
         initial_energy_kwh: float | None = None,
         initial_temp_c: float | None = None,
+        initialization_mode: str | None = None,
         process_demand_kw: float | None = None,
         process_enabled: bool = True,
         session_id: str | None = None,
@@ -199,6 +220,7 @@ class ShadowRuntimeService:
             initial_soc_percent=initial_soc_percent,
             initial_energy_kwh=initial_energy_kwh,
             initial_temp_c=initial_temp_c,
+            initialization_mode=initialization_mode,
         )
 
         p_demand = process_demand_kw if process_demand_kw is not None else self.site_params.process_heat_demand_kw

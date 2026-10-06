@@ -4,9 +4,11 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>{% block title %}Virtual TES Gen0 Dashboard{% endblock %}</title>
-  <!-- Chart.js and HTMX -->
-  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-  <script src="https://unpkg.com/htmx.org@2.0.2"></script>
+  <!-- Local Vendor Scripts with CDN fallback (Phase 5.9 Resilient Runtime) -->
+  <script src="/static/js/chart.min.js"></script>
+  <script>window.Chart || document.write('<script src="https://cdn.jsdelivr.net/npm/chart.js"><\/script>')</script>
+  <script src="/static/js/htmx.min.js"></script>
+  <script>window.htmx || document.write('<script src="https://unpkg.com/htmx.org@2.0.2"><\/script>')</script>
   <style>
     :root {
       --bg-page: #f8fafc;

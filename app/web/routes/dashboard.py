@@ -106,7 +106,7 @@ def get_runtime_status_context(db: Session) -> dict[str, Any]:
     if hb and hb.timestamp_utc:
         age = (now - ensure_utc(hb.timestamp_utc)).total_seconds()
         heartbeat_age_sec = int(age)
-        if age <= 180 and hb.status == "RUNNING":
+        if age <= 180 and hb.status in ("RUNNING", "STANDBY"):
             worker_online = True
 
     worker_display = "RUNNING" if worker_online else "OFFLINE"

@@ -37,13 +37,8 @@ class DistributedWorkerLock:
 
     def acquire_or_renew(self, session: Session) -> bool:
         """Attempt to acquire or renew leadership. Returns True if this worker is active leader."""
-        bind = session.get_bind()
-        dialect_name = bind.dialect.name
-
-        if dialect_name == "postgresql":
-            return self._acquire_pg_advisory(session)
-        else:
-            return self._acquire_db_lease(session)
+        # Use distributed lease table for robust connection-pool-safe leader election
+        return self._acquire_db_lease(session)
 
     def _acquire_pg_advisory(self, session: Session) -> bool:
         """PostgreSQL session advisory lock. True if lock acquired, False if already held."""

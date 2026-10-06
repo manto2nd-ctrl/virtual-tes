@@ -1,0 +1,43 @@
+# Virtual TES Gen0 — Git Ignore
+
+# Environment & credentials
+.env
+.env.local
+.env.*.local
+
+# Virtual environments
+.venv/
+venv/
+ENV/
+
+# Local databases & runtime state (PostgreSQL is production source of truth)
+data/
+*.db
+*.sqlite
+*.sqlite3
+backups/
+
+# Scratch & temporary artifacts
+scratch/
+output/
+logs/
+*.log
+
+# Python bytecode & cache
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+dist/
+build/
+
+# Testing & coverage
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Editor & OS artifacts
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/

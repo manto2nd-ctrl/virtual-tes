@@ -1,0 +1,273 @@
+{% extends "base.html" %}
+
+{% block title %}TES Physical Model - Virtual TES Gen0{% endblock %}
+
+{% block content %}
+<div class="card-header" style="margin-bottom: 20px;">
+  <div>
+    <h2 style="font-size: 1.3rem; font-weight: 700;">TES Physical Enthalpy &amp; Storage Model</h2>
+    <p style="color: var(--text-muted); font-size: 0.85rem;">
+      Non-linear quartz sand sensible enthalpy integration across physical temperature limits.
+    </p>
+  </div>
+  <span class="badge badge-blue">CANONICAL BACKEND PHYSICS</span>
+</div>
+
+<!-- Controls & Interactive Slider Grid -->
+<div class="grid-2">
+  <!-- Parameter Inputs -->
+  <div class="card">
+    <div class="card-header">
+      <h3 class="card-title">Storage Boundaries</h3>
+      <span class="badge badge-amber">CONFIGURABLE</span>
+    </div>
+    <form id="thermal-form">
+      <div class="grid-2">
+        <div class="form-group">
+          <label class="form-label">Physical T_min [°C]</label>
+          <input type="number" step="1" id="t_min_c" class="form-control" value="80.0">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Physical T_max [°C]</label>
+          <input type="number" step="1" id="t_max_c" class="form-control" value="300.0">
+        </div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Full-Span Physical Capacity [kWh]</label>
+        <input type="number" step="0.5" id="cap_full_kwh" class="form-control" value="15.0">
+      </div>
+      <div class="grid-2">
+        <div class="form-group">
+          <label class="form-label">Optimizer SOC Floor [fraction]</label>
+          <input type="number" step="0.05" min="0" max="0.5" id="soc_min_frac" class="form-control" value="0.10">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Optimizer SOC Ceiling [fraction]</label>
+          <input type="number" step="0.05" min="0.5" max="1.0" id="soc_max_frac" class="form-control" value="1.00">
+        </div>
+      </div>
+      <button type="button" class="btn btn-outline" onclick="updateThermalModel()">Recalculate Storage Baseline</button>
+    </form>
+  </div>
+
+  <!-- Interactive State Slider -->
+  <div class="card" style="background: #fdfefe; border-color: #cbd5e1;">
+    <div class="card-header">
+      <h3 class="card-title">Live State Exploration Slider</h3>
+      <span class="badge badge-green" id="soc-badge">SOC: 50.0%</span>
+    </div>
+    <div class="form-group" style="margin: 20px 0;">
+      <label class="form-label" style="display:flex; justify-content: space-between;">
+        <span>Adjust Physical SOC (0% &rarr; 100%)</span>
+        <strong id="soc-slider-val" style="font-size: 1.1rem; color: var(--primary);">50.0 %</strong>
+      </label>
+      <input type="range" min="0" max="100" step="1" value="50" id="soc-slider" style="width: 100%; height: 8px; cursor: pointer;" oninput="onSocSliderChange(this.value)">
+      <div style="display: flex; justify-content: space-between; font-size: 0.75rem; color: var(--text-muted); margin-top: 4px;">
+        <span>0% (80 °C Datum)</span>
+        <span style="color: var(--warning); font-weight: 600;">10% Reserve Floor</span>
+        <span>50%</span>
+        <span>100% (300 °C Max)</span>
+      </div>
+    </div>
+
+    <!-- Live Evaluation Results -->
+    <div class="kpi-grid" style="grid-template-columns: 1fr 1fr; margin-bottom: 0;">
+      <div class="kpi-card" style="padding: 10px 14px;">
+        <div class="kpi-label">Stored Thermal Energy</div>
+        <div class="kpi-value" id="val-stored-kwh">7.50<span class="kpi-unit">kWh</span></div>
+      </div>
+      <div class="kpi-card" style="padding: 10px 14px;">
+        <div class="kpi-label">Bulk Sand Temperature</div>
+        <div class="kpi-value" id="val-temp-c">195.4<span class="kpi-unit">°C</span></div>
+      </div>
+      <div class="kpi-card" style="padding: 10px 14px;">
+        <div class="kpi-label">Usable Dispatchable Energy</div>
+        <div class="kpi-value" id="val-disp-kwh">6.00<span class="kpi-unit">kWh</span></div>
+        <div class="kpi-sub">Above 10% reserve</div>
+      </div>
+      <div class="kpi-card" style="padding: 10px 14px;">
+        <div class="kpi-label">HX Max Discharge Power</div>
+        <div class="kpi-value" id="val-hx-pmax-kw">1.68<span class="kpi-unit">kW</span></div>
+        <div class="kpi-sub">@ U=9 W/m²K, 80 m³/h</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Derived Properties Table -->
+<div class="card">
+  <div class="card-header">
+    <h3 class="card-title">Derived Storage Properties (Validated Backend Thermodynamics)</h3>
+    <span class="badge badge-blue">DERIVED METRICS</span>
+  </div>
+  <table class="engineering-table">
+    <thead>
+      <tr>
+        <th>Full-Span Capacity</th>
+        <th>Dispatchable Capacity</th>
+        <th>Optimizer Reserve (0-10%)</th>
+        <th>Equivalent Sand Mass</th>
+        <th>Specific Storage Energy</th>
+        <th>Temp at Optimizer Floor</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td class="num-col" id="tbl-full-kwh"><strong>15.00 kWh</strong></td>
+        <td class="num-col" id="tbl-disp-kwh"><strong>13.50 kWh</strong></td>
+        <td class="num-col" id="tbl-reserve-kwh">1.50 kWh</td>
+        <td class="num-col" id="tbl-sand-mass"><strong>275.7 kg</strong></td>
+        <td class="num-col" id="tbl-spec-kwh">0.0544 kWh/kg</td>
+        <td class="num-col" id="tbl-temp-floor" style="color: var(--warning); font-weight: 600;">104.71 °C</td>
+      </tr>
+    </tbody>
+  </table>
+</div>
+
+<!-- Charts Grid -->
+<div class="grid-2">
+  <!-- Chart 1: SOC vs Temperature -->
+  <div class="card">
+    <div class="card-header">
+      <h3 class="card-title">Physical SOC vs Sand Temperature (Nonlinear Enthalpy)</h3>
+      <span class="badge badge-blue">T(SOC)</span>
+    </div>
+    <div class="chart-box">
+      <canvas id="chartSocTemp"></canvas>
+    </div>
+  </div>
+
+  <!-- Chart 2: Stored Energy vs Bulk Sand Temperature -->
+  <div class="card">
+    <div class="card-header">
+      <h3 class="card-title">Stored Thermal Energy vs Bulk Sand Temperature</h3>
+      <span class="badge badge-blue">E(T)</span>
+    </div>
+    <div class="chart-box">
+      <canvas id="chartTempEnergy"></canvas>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let chart1 = null;
+let chart2 = null;
+
+async function updateThermalModel() {
+  const payload = {
+    physical_temperature_min_c: parseFloat(document.getElementById('t_min_c').value),
+    physical_temperature_max_c: parseFloat(document.getElementById('t_max_c').value),
+    thermal_capacity_full_span_kwh: parseFloat(document.getElementById('cap_full_kwh').value),
+    optimizer_soc_min_fraction: parseFloat(document.getElementById('soc_min_frac').value),
+    optimizer_soc_max_fraction: parseFloat(document.getElementById('soc_max_frac').value),
+    soc_fraction: parseFloat(document.getElementById('soc-slider').value) / 100.0,
+  };
+
+  const resp = await fetch('/api/calculate/thermal-state', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload)
+  });
+  const data = await resp.json();
+
+  // Update UI values
+  document.getElementById('val-stored-kwh').innerHTML = data.current_stored_energy_kwh.toFixed(2) + '<span class="kpi-unit">kWh</span>';
+  document.getElementById('val-temp-c').innerHTML = data.current_sand_temperature_c.toFixed(1) + '<span class="kpi-unit">°C</span>';
+  document.getElementById('val-disp-kwh').innerHTML = data.current_remaining_dispatchable_kwh.toFixed(2) + '<span class="kpi-unit">kWh</span>';
+  document.getElementById('val-hx-pmax-kw').innerHTML = data.current_hx_pmax_kw.toFixed(2) + '<span class="kpi-unit">kW</span>';
+
+  document.getElementById('tbl-full-kwh').innerHTML = '<strong>' + data.thermal_capacity_full_span_kwh.toFixed(2) + ' kWh</strong>';
+  document.getElementById('tbl-disp-kwh').innerHTML = '<strong>' + data.dispatchable_capacity_kwh.toFixed(2) + ' kWh</strong>';
+  document.getElementById('tbl-reserve-kwh').innerHTML = data.soc_min_energy_kwh.toFixed(2) + ' kWh';
+  document.getElementById('tbl-sand-mass').innerHTML = '<strong>' + data.sand_mass_kg.toFixed(1) + ' kg</strong>';
+  document.getElementById('tbl-spec-kwh').innerHTML = data.specific_storage_kwh_per_kg.toFixed(4) + ' kWh/kg';
+  document.getElementById('tbl-temp-floor').innerHTML = data.temperature_at_optimizer_min_soc_c.toFixed(2) + ' °C';
+
+  renderCharts(data);
+}
+
+function onSocSliderChange(val) {
+  document.getElementById('soc-slider-val').innerText = parseFloat(val).toFixed(1) + ' %';
+  document.getElementById('soc-badge').innerText = 'SOC: ' + parseFloat(val).toFixed(1) + '%';
+  updateThermalModel();
+}
+
+function renderCharts(data) {
+  // Chart 1: SOC vs Temperature
+  const labels1 = data.soc_temperature_curve.map(pt => pt.soc_percent + '%');
+  const temps1 = data.soc_temperature_curve.map(pt => pt.temperature_c);
+
+  if (chart1) chart1.destroy();
+  const ctx1 = document.getElementById('chartSocTemp').getContext('2d');
+  chart1 = new Chart(ctx1, {
+    type: 'line',
+    data: {
+      labels: labels1,
+      datasets: [{
+        label: 'Bulk Sand Temperature [°C]',
+        data: temps1,
+        borderColor: '#2563eb',
+        backgroundColor: 'rgba(37, 99, 235, 0.05)',
+        borderWidth: 2.5,
+        fill: true,
+        tension: 0.1,
+        pointRadius: 0,
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { position: 'top' },
+        tooltip: { mode: 'index', intersect: false }
+      },
+      scales: {
+        x: { title: { display: true, text: 'Physical SOC [%]' } },
+        y: { title: { display: true, text: 'Temperature [°C]' }, min: data.physical_temperature_min_c - 5, max: data.physical_temperature_max_c + 10 }
+      }
+    }
+  });
+
+  // Chart 2: Temperature vs Energy
+  const temps2 = data.temperature_energy_curve.map(pt => pt.temperature_c + ' °C');
+  const energy2 = data.temperature_energy_curve.map(pt => pt.stored_energy_kwh);
+
+  if (chart2) chart2.destroy();
+  const ctx2 = document.getElementById('chartTempEnergy').getContext('2d');
+  chart2 = new Chart(ctx2, {
+    type: 'line',
+    data: {
+      labels: temps2,
+      datasets: [{
+        label: 'Stored Energy [kWh]',
+        data: energy2,
+        borderColor: '#16a34a',
+        backgroundColor: 'rgba(22, 163, 74, 0.08)',
+        borderWidth: 2.5,
+        fill: true,
+        tension: 0.1,
+        pointRadius: 0,
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { position: 'top' }
+      },
+      scales: {
+        x: { title: { display: true, text: 'Bulk Sand Temperature [°C]' }, ticks: { maxTicksLimit: 12 } },
+        y: { title: { display: true, text: 'Stored Energy [kWh]' }, min: 0 }
+      }
+    }
+  });
+}
+
+// Initial render on load
+document.addEventListener('DOMContentLoaded', () => {
+  updateThermalModel();
+});
+</script>
+{% endblock %}

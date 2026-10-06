@@ -1,0 +1,283 @@
+{% extends "base.html" %}
+
+{% block title %}Heat Exchanger Model - Virtual TES Gen0{% endblock %}
+
+{% block content %}
+<div class="card-header" style="margin-bottom: 20px;">
+  <div>
+    <h2 style="font-size: 1.3rem; font-weight: 700;">Helical Coil Air Heat Exchanger (Epsilon-NTU Model)</h2>
+    <p style="color: var(--text-muted); font-size: 0.85rem;">
+      Lumped-bed physical effectiveness-NTU heat transfer model in sensible quartz sand bed.
+    </p>
+  </div>
+  <span class="badge badge-amber">LUMPED-BED HX MODEL (NOT CFD, NOT MEASURED)</span>
+</div>
+
+<!-- Reference Presets -->
+<div class="card" style="margin-bottom: 20px; padding: 14px 20px;">
+  <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
+    <span style="font-weight: 600; font-size: 0.85rem;">Load Standard Presets:</span>
+    <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+      <button type="button" class="btn btn-outline" onclick="applyPreset(6.0, 60.0, 'Conservative')">
+        Conservative (U=6, 60 m³/h)
+      </button>
+      <button type="button" class="btn btn-primary" onclick="applyPreset(9.0, 80.0, 'Reference')">
+        Reference Gen0 (U=9, 80 m³/h)
+      </button>
+      <button type="button" class="btn btn-outline" onclick="applyPreset(12.0, 100.0, 'Optimistic')">
+        Optimistic (U=12, 100 m³/h)
+      </button>
+      <button type="button" class="btn btn-outline" style="border-color: #fca5a5; color: #b91c1c;" onclick="applyPreset(25.0, 80.0, 'Not Validated')">
+        Test U=25 (NOT VALIDATED)
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- Provisional Gen0 HX Reference Specification Card -->
+<div class="card" style="margin-bottom: 20px; padding: 14px 20px; background: #f8fafc;">
+  <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+    <strong style="font-size: 0.9rem; color: var(--text);">Provisional Gen0 Heat Exchanger Reference Specification</strong>
+    <span class="badge badge-blue">AISI 304L / EN 1.4307</span>
+  </div>
+  <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; font-size: 0.8rem; color: var(--text-muted);">
+    <div>Tube OD × Wall: <strong style="color: var(--text);">60.3 × 2.0 mm (ID ≈ 56.3 mm)</strong></div>
+    <div>Mean Coil Diameter: <strong style="color: var(--text);">≈ 420 mm</strong></div>
+    <div>Coil Turns: <strong style="color: var(--text);">≈ 6 turns</strong></div>
+    <div>Active Tube Length: <strong style="color: var(--text);">≈ 8.0–8.5 m</strong></div>
+    <div>External Heat-Transfer Area: <strong style="color: var(--text);">≈ 1.55 m²</strong></div>
+    <div>Reference Airflow: <strong style="color: var(--text);">80 m³/h</strong></div>
+    <div>Reference Overall U: <strong style="color: var(--text);">9.0 W/m²K</strong></div>
+    <div>Process Air Inlet: <strong style="color: var(--text);">40.0 °C</strong></div>
+  </div>
+</div>
+
+<!-- Inputs & Diagnostics Grid -->
+<div class="grid-2">
+  <!-- Parameter Form -->
+  <div class="card">
+    <div class="card-header">
+      <h3 class="card-title">HX Operating Parameters</h3>
+      <span class="badge badge-blue" id="preset-label">REFERENCE PRESET</span>
+    </div>
+    <form id="hx-form">
+      <div class="grid-2">
+        <div class="form-group">
+          <label class="form-label">Physical SOC [%]</label>
+          <input type="number" step="5" min="0" max="100" id="hx_soc" class="form-control" value="50.0" onchange="updateHXModel()">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Process Heat Demand [kW]</label>
+          <input type="number" step="0.1" id="process_demand_kw" class="form-control" value="1.5" onchange="updateHXModel()">
+        </div>
+      </div>
+      <div class="grid-2">
+        <div class="form-group">
+          <label class="form-label">Overall U [W/(m²·K)]</label>
+          <input type="number" step="0.5" id="hx_u" class="form-control" value="9.0" onchange="updateHXModel()">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Airflow Rate [m³/h]</label>
+          <input type="number" step="5" id="hx_flow" class="form-control" value="80.0" onchange="updateHXModel()">
+        </div>
+      </div>
+      <div class="grid-2">
+        <div class="form-group">
+          <label class="form-label">Heat Exchanger Area [m²]</label>
+          <input type="number" step="0.05" id="hx_area" class="form-control" value="1.55" onchange="updateHXModel()">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Inlet Process Air Temp [°C]</label>
+          <input type="number" step="1" id="hx_tin" class="form-control" value="40.0" onchange="updateHXModel()">
+        </div>
+      </div>
+    </form>
+  </div>
+
+  <!-- Real-time Thermal Diagnostics -->
+  <div class="card">
+    <div class="card-header">
+      <h3 class="card-title">Calculated Heat Transfer Diagnostics</h3>
+      <span class="badge badge-green" id="demand-satisfy-badge">DEMAND SATISFIED</span>
+    </div>
+    <div class="kpi-grid" style="grid-template-columns: 1fr 1fr; margin-bottom: 12px;">
+      <div class="kpi-card" style="padding: 10px 14px;">
+        <div class="kpi-label">Bulk Sand Temp</div>
+        <div class="kpi-value" id="val-hx-sand-temp">195.4<span class="kpi-unit">°C</span></div>
+      </div>
+      <div class="kpi-card" style="padding: 10px 14px;">
+        <div class="kpi-label">Max Useful HX Power</div>
+        <div class="kpi-value" id="val-hx-pmax" style="color: var(--primary);">1.68<span class="kpi-unit">kW</span></div>
+      </div>
+      <div class="kpi-card" style="padding: 10px 14px;">
+        <div class="kpi-label">Predicted Outlet Air Temp</div>
+        <div class="kpi-value" id="val-hx-tout">94.8<span class="kpi-unit">°C</span></div>
+      </div>
+      <div class="kpi-card" style="padding: 10px 14px;">
+        <div class="kpi-label">HX Effectiveness (ε)</div>
+        <div class="kpi-value" id="val-hx-eps">0.384<span class="kpi-unit">[-]</span></div>
+      </div>
+    </div>
+    <table class="engineering-table">
+      <tbody>
+        <tr>
+          <td>Conductance (UA)</td>
+          <td class="num-col" id="val-hx-ua">13.95 W/K</td>
+          <td>Air Heat Capacity Rate (C_air)</td>
+          <td class="num-col" id="val-hx-cair">24.52 W/K</td>
+        </tr>
+        <tr>
+          <td>Air Mass Flow Rate</td>
+          <td class="num-col" id="val-hx-massflow">0.0243 kg/s</td>
+          <td>Number of Transfer Units (NTU)</td>
+          <td class="num-col" id="val-hx-ntu">0.569 [-]</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- Charts Grid -->
+<div class="grid-2">
+  <!-- Chart 1: HX Power vs SOC with 1.5 kW Demand Line -->
+  <div class="card">
+    <div class="card-header">
+      <h3 class="card-title">HX Thermal Power vs SOC (Process Demand Horizon)</h3>
+      <span class="badge badge-blue">DERATING CURVES</span>
+    </div>
+    <div class="chart-box">
+      <canvas id="chartHxPower"></canvas>
+    </div>
+  </div>
+
+  <!-- Chart 2: Outlet Air Temperature vs SOC with 70 °C Target -->
+  <div class="card">
+    <div class="card-header">
+      <h3 class="card-title">Predicted Outlet Air Temperature vs SOC</h3>
+      <span class="badge badge-blue">PROCESS DELIVERY</span>
+    </div>
+    <div class="chart-box">
+      <canvas id="chartHxTemp"></canvas>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let chartHxPower = null;
+let chartHxTemp = null;
+
+function applyPreset(u, flow, name) {
+  document.getElementById('hx_u').value = u;
+  document.getElementById('hx_flow').value = flow;
+  document.getElementById('preset-label').innerText = name.toUpperCase() + (name.includes('Validated') ? '' : ' PRESET');
+  if (name.includes('Validated')) {
+    document.getElementById('preset-label').className = 'badge badge-red';
+  } else {
+    document.getElementById('preset-label').className = 'badge badge-blue';
+  }
+  updateHXModel();
+}
+
+async function updateHXModel() {
+  const payload = {
+    soc_fraction: parseFloat(document.getElementById('hx_soc').value) / 100.0,
+    overall_u_w_m2k: parseFloat(document.getElementById('hx_u').value),
+    hx_area_m2: parseFloat(document.getElementById('hx_area').value),
+    airflow_m3_h: parseFloat(document.getElementById('hx_flow').value),
+    air_inlet_temperature_c: parseFloat(document.getElementById('hx_tin').value),
+    process_demand_kw: parseFloat(document.getElementById('process_demand_kw').value),
+  };
+
+  const resp = await fetch('/api/calculate/hx', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload)
+  });
+  const data = await resp.json();
+
+  document.getElementById('val-hx-sand-temp').innerHTML = data.sand_temperature_c.toFixed(1) + '<span class="kpi-unit">°C</span>';
+  document.getElementById('val-hx-pmax').innerHTML = data.p_max_kw.toFixed(2) + '<span class="kpi-unit">kW</span>';
+  document.getElementById('val-hx-tout').innerHTML = data.predicted_outlet_air_temperature_c.toFixed(1) + '<span class="kpi-unit">°C</span>';
+  document.getElementById('val-hx-eps').innerHTML = data.effectiveness.toFixed(3) + '<span class="kpi-unit">[-]</span>';
+
+  document.getElementById('val-hx-ua').innerText = data.ua_w_k.toFixed(2) + ' W/K';
+  document.getElementById('val-hx-cair').innerText = data.air_heat_capacity_rate_w_k.toFixed(2) + ' W/K';
+  document.getElementById('val-hx-massflow').innerText = data.air_mass_flow_kg_s.toFixed(4) + ' kg/s';
+  document.getElementById('val-hx-ntu').innerText = data.ntu.toFixed(3) + ' [-]';
+
+  const satisfyBadge = document.getElementById('demand-satisfy-badge');
+  if (data.can_satisfy_process_demand) {
+    satisfyBadge.innerText = 'DEMAND SATISFIED (' + data.p_max_kw.toFixed(2) + ' >= ' + data.process_demand_kw.toFixed(1) + ' kW)';
+    satisfyBadge.className = 'badge badge-green';
+  } else {
+    satisfyBadge.innerText = 'DERATING SHORTAGE (' + data.p_max_kw.toFixed(2) + ' < ' + data.process_demand_kw.toFixed(1) + ' kW)';
+    satisfyBadge.className = 'badge badge-red';
+  }
+
+  renderHxCharts(data);
+}
+
+function renderHxCharts(data) {
+  const socLabels = data.hx_power_curve.map(pt => pt.soc_percent + '%');
+  const p6 = data.hx_power_curve.map(pt => pt.p_u6_kw);
+  const p9 = data.hx_power_curve.map(pt => pt.p_u9_kw);
+  const p12 = data.hx_power_curve.map(pt => pt.p_u12_kw);
+  const demandLine = data.hx_power_curve.map(pt => pt.process_demand_kw);
+
+  if (chartHxPower) chartHxPower.destroy();
+  const ctxP = document.getElementById('chartHxPower').getContext('2d');
+  chartHxPower = new Chart(ctxP, {
+    type: 'line',
+    data: {
+      labels: socLabels,
+      datasets: [
+        { label: 'U = 6 W/m²K', data: p6, borderColor: '#94a3b8', borderWidth: 2, pointRadius: 0 },
+        { label: 'U = 9 W/m²K (Ref)', data: p9, borderColor: '#2563eb', borderWidth: 2.5, pointRadius: 0 },
+        { label: 'U = 12 W/m²K', data: p12, borderColor: '#16a34a', borderWidth: 2, pointRadius: 0 },
+        { label: 'Process Demand (' + data.process_demand_kw + ' kW)', data: demandLine, borderColor: '#dc2626', borderWidth: 2, borderDash: [5, 5], pointRadius: 0 }
+      ]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: { legend: { position: 'top' } },
+      scales: {
+        x: { title: { display: true, text: 'Physical SOC [%]' } },
+        y: { title: { display: true, text: 'Max Thermal Power [kW]' }, min: 0 }
+      }
+    }
+  });
+
+  const tout = data.hx_temp_curve.map(pt => pt.outlet_temp_c);
+  const target70 = data.hx_temp_curve.map(pt => pt.target_dryer_temp_c);
+
+  if (chartHxTemp) chartHxTemp.destroy();
+  const ctxT = document.getElementById('chartHxTemp').getContext('2d');
+  chartHxTemp = new Chart(ctxT, {
+    type: 'line',
+    data: {
+      labels: socLabels,
+      datasets: [
+        { label: 'Outlet Air Temp [°C]', data: tout, borderColor: '#d97706', borderWidth: 2.5, pointRadius: 0 },
+        { label: 'Target Dryer Temp (70 °C)', data: target70, borderColor: '#475569', borderWidth: 1.5, borderDash: [4, 4], pointRadius: 0 }
+      ]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: { legend: { position: 'top' } },
+      scales: {
+        x: { title: { display: true, text: 'Physical SOC [%]' } },
+        y: { title: { display: true, text: 'Temperature [°C]' }, min: 30 }
+      }
+    }
+  });
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  updateHXModel();
+});
+</script>
+{% endblock %}

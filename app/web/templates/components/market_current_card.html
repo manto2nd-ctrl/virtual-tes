@@ -1,0 +1,240 @@
+<!-- Component: Live Current Market Interval & TES Action Now (Phase 5.8.1) -->
+<div id="current-market-card-container"
+     hx-get="/api/market/current-card"
+     hx-trigger="every 60s"
+     hx-swap="outerHTML"
+     style="margin-bottom: 24px;">
+
+  {% if market.fallback_used == 'YES' %}
+  <div style="background: #fffbeb; border-left: 4px solid #f59e0b; padding: 10px 16px; border-radius: 4px; margin-bottom: 16px; font-size: 0.82rem; color: #92400e; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
+    <div>
+      <strong>FALLBACK PROVIDER ACTIVE ({{ market.active_source }}):</strong> {{ market.fallback_reason }}
+      {% if market.error_message %}<span style="font-family: var(--font-mono); font-size: 0.78rem; display: block; margin-top: 2px;">Provider diagnostic: {{ market.error_message }}</span>{% endif %}
+    </div>
+    <span class="badge badge-amber">FALLBACK ACTIVE</span>
+  </div>
+  {% endif %}
+
+  <div class="grid-2">
+    <!-- 1. CURRENT LT DAY-AHEAD PRICE CARD -->
+    <div class="card" style="margin-bottom: 0; border-top: 4px solid var(--primary, #2563eb); display: flex; flex-direction: column; justify-content: space-between;">
+      <div>
+        <div class="card-header" style="margin-bottom: 12px; padding-bottom: 8px;">
+          <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
+            <h3 class="card-title" style="margin: 0; font-size: 1.05rem;">CURRENT LT DAY-AHEAD PRICE</h3>
+            <span class="badge {% if market.data_status == 'LIVE DATA' %}badge-green{% elif market.data_status == 'STALE DATA' or market.data_status == 'WAITING FOR TOMORROW PRICES' %}badge-amber{% elif market.data_status == 'MOCK DATA' %}badge-slate{% else %}badge-red{% endif %}">
+              {{ market.data_status }}
+            </span>
+          </div>
+          <button type="button"
+                  class="btn btn-outline"
+                  style="padding: 3px 8px; font-size: 0.72rem; line-height: 1;"
+                  hx-get="/api/market/current-card"
+                  hx-target="#current-market-card-container"
+                  hx-swap="outerHTML"
+                  title="Auto-refreshes every 60 seconds">
+            ↻ Auto (60s)
+          </button>
+        </div>
+
+        <div style="margin-bottom: 14px;">
+          <div style="display: flex; align-items: baseline; gap: 6px;">
+            <span style="font-size: 2.2rem; font-weight: 800; font-family: var(--font-sans); color: var(--text-main); letter-spacing: -0.02em;">
+              {{ market.price_eur_mwh_str }}
+            </span>
+            <span style="font-size: 1.0rem; font-weight: 600; color: var(--text-muted);">EUR/MWh</span>
+          </div>
+          <div style="font-size: 0.8rem; color: var(--text-muted); margin-top: 2px;">
+            Day-ahead spot price (Nord Pool Lithuania)
+          </div>
+        </div>
+
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; font-size: 0.82rem; margin-bottom: 14px; background: #f8fafc; padding: 10px 12px; border-radius: 6px; border: 1px solid var(--border-color);">
+          <div>
+            <div style="color: var(--text-muted); font-size: 0.75rem;">Current Local Time</div>
+            <strong style="color: var(--text-main);">{{ market.current_time_local_str }}</strong>
+          </div>
+          <div>
+            <div style="color: var(--text-muted); font-size: 0.75rem;">Current Market Interval</div>
+            <strong style="color: var(--primary, #2563eb);">{{ market.interval_str }}</strong>
+          </div>
+          <div>
+            <div style="color: var(--text-muted); font-size: 0.75rem;">Source &amp; Hierarchy</div>
+            <span><strong>{{ market.active_source }}</strong> (Primary: {{ market.primary_source }})</span>
+          </div>
+          <div>
+            <div style="color: var(--text-muted); font-size: 0.75rem;">Fallback Used</div>
+            <span style="font-weight: 600; color: {% if market.fallback_used == 'YES' %}#d97706{% else %}#16a34a{% endif %};">
+              {{ market.fallback_used }}
+            </span>
+          </div>
+          <div>
+            <div style="color: var(--text-muted); font-size: 0.75rem;">Last Fetched &amp; Age</div>
+            <span><strong>{{ market.last_fetched_str }}</strong> ({{ market.age_minutes }} min ago)</span>
+          </div>
+          <div>
+            <div style="color: var(--text-muted); font-size: 0.75rem;">Resolution</div>
+            <span><strong>{{ market.resolution }}</strong> {% if market.is_derived %}<span class="badge badge-amber" style="font-size: 0.65rem;">Derived (Orig: {{ market.original_resolution }})</span>{% endif %}</span>
+          </div>
+        </div>
+
+        <!-- Next Interval Box (Requirement 4) -->
+        <div style="background: #ffffff; border: 1px dashed var(--border-color); border-radius: 6px; padding: 10px 12px; margin-bottom: 12px;">
+          <div style="font-size: 0.72rem; font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 4px;">
+            NEXT INTERVAL
+          </div>
+          <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
+            <div>
+              <span style="font-size: 0.85rem; font-weight: 600; color: var(--text-main);">Time: {{ market.next_interval_str }}</span>
+            </div>
+            <div>
+              <span style="font-size: 0.85rem; font-weight: 700; color: var(--text-main);">Price: {{ market.next_price_eur_mwh_str }} EUR/MWh</span>
+            </div>
+            <div>
+              <span style="font-size: 0.82rem; font-weight: 600; color: {% if market.price_diff_eur_mwh is not none and market.price_diff_eur_mwh > 0 %}#dc2626{% elif market.price_diff_eur_mwh is not none and market.price_diff_eur_mwh < 0 %}#16a34a{% else %}#64748b{% endif %};">
+                Change: {{ market.price_diff_eur_mwh_str }} EUR/MWh
+              </span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Effective Electricity Price (Requirement 13) -->
+      <div style="border-top: 1px solid var(--border-color); padding-top: 10px; font-size: 0.8rem;">
+        <div style="display: flex; justify-content: space-between; margin-bottom: 3px;">
+          <span style="color: var(--text-muted);">Market Spot Price:</span>
+          <span class="num-col" style="font-weight: 600;">{{ market.price_eur_mwh_str }} EUR/MWh</span>
+        </div>
+        <div style="display: flex; justify-content: space-between; margin-bottom: 3px;">
+          <span style="color: var(--text-muted);">Configured Supplier / Variable Adders:</span>
+          <span class="num-col" style="color: #92400e;">+ {{ "%.2f"|format(market.total_adders_eur_mwh) }} EUR/MWh</span>
+        </div>
+        <div style="display: flex; justify-content: space-between; align-items: baseline; margin-top: 4px; padding-top: 4px; border-top: 1px dashed var(--border-color);">
+          <strong style="color: var(--text-main);">EFFECTIVE VARIABLE PRICE:</strong>
+          <span class="num-col" style="font-size: 1.05rem; font-weight: 700; color: var(--primary, #2563eb);">
+            {{ market.effective_price_eur_mwh_str }} EUR/MWh
+          </span>
+        </div>
+        <div style="display: flex; justify-content: space-between; align-items: baseline; margin-top: 4px; padding-top: 4px; border-top: 1px solid #f1f5f9;">
+          <strong style="color: #166534; font-size: 0.78rem;">OPTIMIZATION PRICE USED:</strong>
+          <span class="num-col" style="font-size: 0.88rem; font-weight: 700; color: #166534;">
+            {{ market.optimization_price_eur_mwh_str }} EUR/MWh <span style="font-size: 0.7rem; font-weight: normal; color: var(--text-muted);">({{ market.optimization_price_basis }})</span>
+          </span>
+        </div>
+        <div style="font-size: 0.72rem; color: var(--text-muted); margin-top: 3px;">
+          (Adders: markup {{ market.supplier_markup_eur_mwh }} + grid fee {{ market.variable_grid_fee_eur_mwh }} + tax {{ market.variable_tax_eur_mwh }} EUR/MWh; optimizer uses effective variable price)
+        </div>
+      </div>
+    </div>
+
+    <!-- 2. CONNECT PRICE TO TES ACTION & REASON CODES (Phase 5.8.3) -->
+    <div class="card" style="margin-bottom: 0; border-top: 4px solid {% if shadow and shadow.status == 'PAUSED' %}#d97706{% elif (shadow.action_now if shadow else market.tes_action.command) in ['CHARGE', 'CHARGE + SUPPLY PROCESS'] or (shadow and 'CHARGE' in shadow.action_now) %}#16a34a{% elif (shadow.action_now if shadow else market.tes_action.command) in ['DISCHARGE', 'SUPPLY PROCESS'] or (shadow and 'SUPPLY' in shadow.action_now) %}#2563eb{% else %}#64748b{% endif %}; display: flex; flex-direction: column; justify-content: space-between;">
+      <div>
+        <div class="card-header" style="margin-bottom: 12px; padding-bottom: 8px;">
+          <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
+            <h3 class="card-title" style="margin: 0; font-size: 1.05rem;">
+              {% if shadow and shadow.status == 'PAUSED' %}
+                PLANNED TES ACTION <span style="font-size: 0.8rem; color: #d97706;">[EXECUTION PAUSED]</span>
+              {% elif shadow and shadow.status == 'RUNNING' %}
+                TES EXECUTION NOW
+              {% else %}
+                TES ACTION NOW
+              {% endif %}
+            </h3>
+            <span class="badge {% if shadow and shadow.status == 'PAUSED' %}badge-amber{% elif (shadow.action_now if shadow else market.tes_action.command) in ['CHARGE', 'CHARGE + SUPPLY PROCESS'] or (shadow and 'CHARGE' in shadow.action_now) %}badge-green{% elif (shadow.action_now if shadow else market.tes_action.command) in ['DISCHARGE', 'SUPPLY PROCESS'] or (shadow and 'SUPPLY' in shadow.action_now) %}badge-blue{% else %}badge-slate{% endif %}">
+              {{ shadow.action_now if shadow else market.tes_action.command }}
+            </span>
+          </div>
+          <span class="badge badge-slate" style="font-size: 0.7rem;">SHADOW DIGITAL TWIN</span>
+        </div>
+
+        <div style="font-size: 0.75rem; color: #166534; background: #dcfce7; padding: 6px 10px; border-radius: 4px; margin-bottom: 14px; font-weight: 600; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 6px;">
+          <span>✓ REAL LT MARKET DATA + VIRTUAL TES OPERATION (ZERO HARDWARE COMMANDS)</span>
+          <span style="font-family: var(--font-mono); font-size: 0.72rem; color: #047857;">State Evolution: {{ shadow.state_evolution if shadow else 'IDLE' }}</span>
+        </div>
+
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; font-size: 0.82rem; margin-bottom: 14px; background: #f8fafc; padding: 10px 12px; border-radius: 6px; border: 1px solid var(--border-color);">
+          <div>
+            <div style="color: var(--text-muted); font-size: 0.75rem;">Market Interval</div>
+            <strong>{{ shadow.current_interval_vilnius if shadow else market.tes_action.interval_str }}</strong>
+          </div>
+          <div>
+            <div style="color: var(--text-muted); font-size: 0.75rem;">Optimization Price Used</div>
+            <strong>{{ "%.2f"|format(shadow.optimization_price_eur_mwh if shadow else market.optimization_price_eur_mwh) }} EUR/MWh</strong>
+            <span style="font-size: 0.68rem; color: var(--text-muted); display: block;">Basis: {{ shadow.optimization_price_basis if shadow else market.optimization_price_basis }}</span>
+          </div>
+          <div>
+            <div style="color: var(--text-muted); font-size: 0.75rem;">TES State of Charge (SOC)</div>
+            <strong style="color: var(--primary, #2563eb);">{{ "%.1f"|format(shadow.soc_percent if shadow else market.tes_action.soc_percent) }} %</strong>
+            <span style="font-size: 0.75rem; color: var(--text-muted);">({{ "%.2f"|format(shadow.stored_energy_kwh if shadow else market.tes_action.soc_kwh) }} kWh)</span>
+          </div>
+          <div>
+            <div style="color: var(--text-muted); font-size: 0.75rem;">Sand Bulk Temperature</div>
+            <strong style="color: #b45309;">~{{ "%.1f"|format(shadow.sand_temperature_c if shadow else market.tes_action.sand_temperature_c) }} °C</strong>
+          </div>
+          <div>
+            <div style="color: var(--text-muted); font-size: 0.75rem;">Planned / Requested Power</div>
+            <strong>{{ "%.2f"|format(shadow.heater_requested_kw if shadow else market.tes_action.requested_kw) }} kW</strong>
+            <span style="font-size: 0.68rem; color: var(--text-muted); display: block;">Idealized continuous request</span>
+          </div>
+          <div>
+            <div style="color: var(--text-muted); font-size: 0.75rem;">Actual Heater Power</div>
+            <strong style="color: {% if shadow and shadow.status == 'PAUSED' %}#d97706{% elif (shadow.heater_actual_kw if shadow else market.tes_action.actual_kw) > 0.05 %}#16a34a{% else %}#0f172a{% endif %}; font-size: 0.95rem;">
+              {{ "%.2f"|format(shadow.heater_actual_kw if shadow else market.tes_action.actual_kw) }} kW
+            </strong>
+            {% if shadow and shadow.status == 'PAUSED' %}
+              <span style="font-size: 0.68rem; color: #d97706; display: block; font-weight: 600;">(0.00 kW while PAUSED)</span>
+            {% endif %}
+          </div>
+          <div>
+            <div style="color: var(--text-muted); font-size: 0.75rem;">Available TES Headroom</div>
+            <strong style="color: #166534;">{{ "%.2f"|format(shadow.available_tes_charging_headroom_kw if shadow else 9.95) }} kW</strong>
+            <span style="font-size: 0.68rem; color: var(--text-muted); display: block;">12.0 - 2.0 site - 0.05 aux</span>
+          </div>
+          <div>
+            <div style="color: var(--text-muted); font-size: 0.75rem;">Current Unused Grid Margin</div>
+            <strong style="color: var(--primary, #2563eb);">{{ "%.2f"|format(shadow.current_unused_grid_margin_kw if shadow else 9.95) }} kW</strong>
+            <span style="font-size: 0.68rem; color: var(--text-muted); display: block;">Buffer at full 9kW: 0.95 kW</span>
+          </div>
+        </div>
+
+        <!-- Physical Staging Warning (Requirement 6) -->
+        <div style="background: #fffbeb; border: 1px solid #fde68a; border-radius: 6px; padding: 8px 12px; margin-bottom: 12px; font-size: 0.76rem; color: #92400e;">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2px;">
+            <strong>HEATER ACTUATION: {{ shadow.actuation_model if shadow else 'CONTINUOUS IDEALIZED' }}</strong>
+            <span class="badge badge-amber" style="font-size: 0.65rem;">STAGE MODEL: NOT YET IMPLEMENTED</span>
+          </div>
+          <div>⚠ {{ shadow.staging_warning if shadow else 'Continuous optimizer request — physical heater staging not yet modeled.' }} (Hardware: 6 × 1.5 kW drywells).</div>
+        </div>
+
+        <!-- Deterministic Reason Code (Requirement 15) -->
+        <div style="background: #ffffff; border: 1px solid var(--border-color); border-radius: 6px; padding: 12px; margin-bottom: 12px;">
+          <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px;">
+            <span style="font-size: 0.72rem; font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.04em;">
+              DETERMINISTIC ACTION REASON
+            </span>
+            <span class="badge badge-slate" style="font-family: var(--font-mono); font-size: 0.72rem; letter-spacing: 0.02em;">
+              {{ shadow.reason_code if shadow else market.tes_action.reason_code }}
+            </span>
+          </div>
+          <p style="font-size: 0.85rem; color: #1e293b; line-height: 1.4; margin: 0;">
+            {% if shadow %}
+              {% if shadow.status == 'PAUSED' %}
+                Execution is PAUSED by user. Virtual physical state is preserved and does not evolve. Planned action will resume upon unpausing (Optimizer Reason: {{ shadow.reason_code }}).
+              {% else %}
+                Receding-horizon optimizer dispatch evaluated against active market conditions (Reason: {{ shadow.reason_code }}).
+              {% endif %}
+            {% else %}
+              {{ market.tes_action.reason_text }}
+            {% endif %}
+          </p>
+        </div>
+
+      </div>
+
+      <div style="font-size: 0.72rem; color: var(--text-muted); border-top: 1px solid var(--border-color); padding-top: 8px;">
+        Active schedule evaluated by receding-horizon LP optimizer against live Lithuanian market data.
+      </div>
+    </div>
+  </div>
+</div>

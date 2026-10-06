@@ -1,0 +1,346 @@
+{% extends "base.html" %}
+
+{% block title %}Market &amp; Dispatch - Virtual TES Gen0{% endblock %}
+
+{% block content %}
+<div class="card-header" style="margin-bottom: 20px;">
+  <div>
+    <h2 style="font-size: 1.3rem; font-weight: 700;">Real Data Shadow Operation &amp; Market Dispatch</h2>
+    <p style="color: var(--text-muted); font-size: 0.85rem;">
+      15-minute receding-horizon LP optimization driven by real Lithuanian day-ahead market data. Strictly virtual shadow operation — zero commands to physical hardware.
+    </p>
+  </div>
+  <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+    <span class="badge badge-green" id="badge-shadow-mode">REAL LT MARKET DATA + VIRTUAL TES OPERATION</span>
+    <span class="badge badge-amber">SYNTHETIC / MOCK PRICES</span>
+    <span class="badge badge-blue">RECEDING-HORIZON LP</span>
+  </div>
+</div>
+
+<!-- Market Data Status & Validation Card (Phase 5.8) -->
+<div class="card" style="margin-bottom: 20px; border-left: 4px solid var(--primary, #2563eb);">
+  <div class="card-header">
+    <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
+      <h3 class="card-title" style="margin: 0;">Lithuanian Market Data Architecture &amp; Provider Hierarchy</h3>
+      <span class="badge {% if market_status.data_freshness == 'LIVE' %}badge-green{% elif market_status.data_freshness == 'STALE DATA' %}badge-amber{% else %}badge-red{% endif %}" id="badge-market-freshness">
+        {{ market_status.data_freshness }}
+      </span>
+      <span class="badge badge-slate" id="badge-active-source">Active: {{ market_status.active_source }}</span>
+    </div>
+    <span class="badge {% if market_status.validation == 'MATCH' %}badge-green{% elif market_status.validation == 'MISMATCH' %}badge-red{% else %}badge-slate{% endif %}" id="badge-validation">
+      Validation: {{ market_status.validation }}
+    </span>
+  </div>
+
+  <div class="kpi-grid" style="grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); margin-bottom: 0;">
+    <div class="kpi-card">
+      <div class="kpi-label">Primary Source</div>
+      <div class="kpi-value" style="font-size: 1.15rem;">{{ market_status.primary_source }}</div>
+      <div class="kpi-sub">
+        Health: <strong style="color: {% if market_status.primary_health == 'OK' %}#16a34a{% else %}#dc2626{% endif %};" id="kpi-primary-health">{{ market_status.primary_health }}</strong>
+      </div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-label">Cross-Check Source</div>
+      <div class="kpi-value" style="font-size: 1.15rem;">{{ market_status.cross_check_source }}</div>
+      <div class="kpi-sub">
+        Health: <strong style="color: {% if market_status.cross_check_health == 'OK' %}#16a34a{% else %}#dc2626{% endif %};" id="kpi-cross-health">{{ market_status.cross_check_health }}</strong>
+      </div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-label">Latest LT Market Interval</div>
+      <div class="kpi-value" style="font-size: 0.95rem; font-weight: 600;" id="kpi-latest-interval">{{ market_status.latest_interval_str }}</div>
+      <div class="kpi-sub">Day-ahead horizon</div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-label">Tomorrow Prices</div>
+      <div class="kpi-value" style="font-size: 1.15rem; color: {% if market_status.tomorrow_prices == 'AVAILABLE' %}#16a34a{% else %}#d97706{% endif %};" id="kpi-tomorrow-prices">
+        {{ market_status.tomorrow_prices }}
+      </div>
+      <div class="kpi-sub">Auction clearing</div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-label">Resolution</div>
+      <div class="kpi-value" style="font-size: 1.15rem;">{{ market_status.resolution }}</div>
+      <div class="kpi-sub">Settlement step</div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-label">Validation Status</div>
+      <div class="kpi-value" style="font-size: 1.15rem; color: {% if market_status.validation == 'MATCH' %}#16a34a{% elif market_status.validation == 'MISMATCH' %}#dc2626{% else %}#64748b{% endif %};" id="kpi-validation-status">
+        {{ market_status.validation }}
+      </div>
+      <div class="kpi-sub">Tol: &le; 0.01 EUR/MWh</div>
+    </div>
+  </div>
+</div>
+
+<!-- Grid & Charging Architecture KPI Bar -->
+<div class="kpi-grid">
+  <div class="kpi-card">
+    <div class="kpi-label">Grid Connection Limit</div>
+    <div class="kpi-value">12.00<span class="kpi-unit">kW</span></div>
+    <div class="kpi-sub">Strict site breaker ceiling</div>
+  </div>
+  <div class="kpi-card">
+    <div class="kpi-label">Configured Charge Power</div>
+    <div class="kpi-value">9.00<span class="kpi-unit">kW</span></div>
+    <div class="kpi-sub">Cartridge heater bank</div>
+  </div>
+  <div class="kpi-card">
+    <div class="kpi-label">Other Site Load</div>
+    <div class="kpi-value">2.00<span class="kpi-unit">kW</span></div>
+    <div class="kpi-sub">Continuous facility background</div>
+  </div>
+  <div class="kpi-card">
+    <div class="kpi-label">TES Auxiliary Power</div>
+    <div class="kpi-value">0.05<span class="kpi-unit">kW</span></div>
+    <div class="kpi-sub">50 W blower/controls</div>
+  </div>
+  <div class="kpi-card">
+    <div class="kpi-label">Peak Total Grid Power</div>
+    <div class="kpi-value" id="kpi-peak-grid">11.05<span class="kpi-unit">kW</span></div>
+    <div class="kpi-sub">Headroom: 0.95 kW remaining</div>
+  </div>
+</div>
+
+<!-- Charts Grid -->
+<div class="grid-2">
+  <!-- Chart 1: Price Arbitrage & Charging Dispatch -->
+  <div class="card">
+    <div class="card-header">
+      <h3 class="card-title">Electricity Price &amp; Charging Dispatch Schedule</h3>
+      <span class="badge badge-green">OPTIMIZED DISPATCH</span>
+    </div>
+    <div class="chart-box">
+      <canvas id="chartDispatchPrice"></canvas>
+    </div>
+  </div>
+
+  <!-- Chart 2: Total Grid Load Breakdown vs Limit -->
+  <div class="card">
+    <div class="card-header">
+      <h3 class="card-title">Total Grid Power Breakdown vs 12 kW Limit</h3>
+      <span class="badge badge-blue">GRID HEADROOM</span>
+    </div>
+    <div class="chart-box">
+      <canvas id="chartGridPower"></canvas>
+    </div>
+  </div>
+</div>
+
+<!-- Dispatch Timeline Table (Section 20) -->
+<div class="card">
+  <div class="card-header">
+    <h3 class="card-title">15-Minute Operational Dispatch Timeline</h3>
+    <span class="badge badge-blue">INTERVAL LOG</span>
+  </div>
+  <div class="table-container" style="max-height: 480px; overflow-y: auto;">
+    <table class="engineering-table" id="dispatch-table">
+      <thead>
+        <tr>
+          <th>Local Time</th>
+          <th>Spot Price</th>
+          <th>Effective Price</th>
+          <th>Charge Power</th>
+          <th>Heat Demand</th>
+          <th>HX Max Avail</th>
+          <th>Actual Discharge</th>
+          <th>Unmet Heat</th>
+          <th>SOC %</th>
+          <th>Sand Temp</th>
+          <th>Total Grid</th>
+          <th>Interval Cost</th>
+        </tr>
+      </thead>
+      <tbody id="dispatch-table-body">
+        <tr><td colspan="12" style="text-align: center; color: var(--text-muted);">Loading dispatch schedule...</td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let chartPrice = null;
+let chartGrid = null;
+
+async function loadDispatchData() {
+  try {
+    const resp = await fetch('/api/dispatch-demo');
+    if (!resp.ok) {
+      const err = await resp.json().catch(() => ({}));
+      const msg = err.detail || 'LIVE MARKET DATA UNAVAILABLE';
+      const tbody = document.getElementById('dispatch-table-body');
+      tbody.innerHTML = `<tr><td colspan="12" style="text-align: center; color: #dc2626; font-weight: 700; padding: 24px;">${msg}</td></tr>`;
+      const badgeFreshness = document.getElementById('badge-market-freshness');
+      if (badgeFreshness) {
+        badgeFreshness.className = 'badge badge-red';
+        badgeFreshness.textContent = 'LIVE MARKET DATA UNAVAILABLE';
+      }
+      return;
+    }
+
+    const data = await resp.json();
+    if (data.status_label && document.getElementById('badge-shadow-mode')) {
+      document.getElementById('badge-shadow-mode').textContent = data.status_label;
+    }
+    if (data.active_source && document.getElementById('badge-active-source')) {
+      document.getElementById('badge-active-source').textContent = `Active: ${data.active_source}`;
+    }
+    if (data.market_status) {
+      const ms = data.market_status;
+      const bf = document.getElementById('badge-market-freshness');
+      if (bf) {
+        bf.textContent = ms.data_freshness;
+        bf.className = ms.data_freshness === 'LIVE' ? 'badge badge-green' : (ms.data_freshness === 'STALE DATA' ? 'badge badge-amber' : 'badge badge-red');
+      }
+      const bv = document.getElementById('badge-validation');
+      if (bv) {
+        bv.textContent = `Validation: ${ms.validation}`;
+        bv.className = ms.validation === 'MATCH' ? 'badge badge-green' : (ms.validation === 'MISMATCH' ? 'badge badge-red' : 'badge badge-slate');
+      }
+      if (document.getElementById('kpi-latest-interval')) document.getElementById('kpi-latest-interval').textContent = ms.latest_interval;
+      if (document.getElementById('kpi-tomorrow-prices')) {
+        const kt = document.getElementById('kpi-tomorrow-prices');
+        kt.textContent = ms.tomorrow_prices;
+        kt.style.color = ms.tomorrow_prices === 'AVAILABLE' ? '#16a34a' : '#d97706';
+      }
+    }
+
+    const series = data.chart_data;
+    const rows = data.timeline_table;
+
+    // Populate Table
+    const tbody = document.getElementById('dispatch-table-body');
+    tbody.innerHTML = '';
+    rows.forEach(r => {
+      const tr = document.createElement('tr');
+      tr.innerHTML = `
+        <td><strong>${r.local_time}</strong></td>
+        <td class="num-col">${r.spot_price_eur_mwh.toFixed(2)} EUR/MWh</td>
+        <td class="num-col">${r.effective_price_eur_mwh.toFixed(2)} EUR/MWh</td>
+        <td class="num-col" style="${r.actual_charge_kw > 0 ? 'color: #16a34a; font-weight:600;' : ''}">${r.actual_charge_kw.toFixed(2)} kW</td>
+        <td class="num-col">${r.process_demand_kw.toFixed(2)} kW</td>
+        <td class="num-col">${r.hx_max_available_kw.toFixed(2)} kW</td>
+        <td class="num-col" style="color: #2563eb;">${r.actual_discharge_kw.toFixed(2)} kW</td>
+        <td class="num-col" style="${r.unmet_heat_kw > 0 ? 'color: #dc2626; font-weight: 700;' : ''}">${r.unmet_heat_kw.toFixed(2)} kW</td>
+        <td class="num-col">${r.soc_percent.toFixed(1)}% (${r.soc_kwh.toFixed(2)} kWh)</td>
+        <td class="num-col">${r.sand_temperature_c.toFixed(1)} °C</td>
+        <td class="num-col" style="font-weight: 600;">${r.grid_total_kw.toFixed(2)} kW</td>
+        <td class="num-col">${r.interval_cost_eur.toFixed(3)} EUR</td>
+      `;
+      tbody.appendChild(tr);
+    });
+
+  // Render Chart 1: Price and Charge Power
+  const times = series.map(s => s.time);
+  const spotPrices = series.map(s => s.spot_price);
+  const chargePowers = series.map(s => s.charge_power);
+  const socPercents = series.map(s => s.soc_percent);
+
+  if (chartPrice) chartPrice.destroy();
+  const ctxP = document.getElementById('chartDispatchPrice').getContext('2d');
+  chartPrice = new Chart(ctxP, {
+    type: 'line',
+    data: {
+      labels: times,
+      datasets: [
+        {
+          label: 'Spot Price [EUR/MWh]',
+          data: spotPrices,
+          borderColor: '#475569',
+          borderWidth: 1.5,
+          yAxisID: 'yPrice',
+          pointRadius: 0
+        },
+        {
+          label: 'Charge Power [kW]',
+          data: chargePowers,
+          borderColor: '#16a34a',
+          backgroundColor: 'rgba(22, 163, 74, 0.2)',
+          borderWidth: 2,
+          fill: true,
+          stepped: 'before',
+          yAxisID: 'yPower',
+          pointRadius: 0
+        },
+        {
+          label: 'SOC [%]',
+          data: socPercents,
+          borderColor: '#2563eb',
+          borderWidth: 2,
+          yAxisID: 'ySoc',
+          pointRadius: 0
+        }
+      ]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: { legend: { position: 'top' } },
+      scales: {
+        x: { ticks: { maxTicksLimit: 12 } },
+        yPrice: { type: 'linear', position: 'left', title: { display: true, text: 'EUR/MWh' } },
+        yPower: { type: 'linear', position: 'right', title: { display: true, text: 'Charge kW' }, min: 0, max: 12, grid: { drawOnChartArea: false } },
+        ySoc: { type: 'linear', position: 'right', title: { display: true, text: 'SOC %' }, min: 0, max: 100, grid: { drawOnChartArea: false } }
+      }
+    }
+  });
+
+  // Render Chart 2: Grid Power vs 12 kW Limit
+  const gridTotals = series.map(s => s.total_grid_power);
+  const gridLimits = series.map(s => s.grid_limit);
+  const siteLoads = series.map(s => s.site_load);
+
+  if (chartGrid) chartGrid.destroy();
+  const ctxG = document.getElementById('chartGridPower').getContext('2d');
+  chartGrid = new Chart(ctxG, {
+    type: 'line',
+    data: {
+      labels: times,
+      datasets: [
+        {
+          label: 'Total Grid Power [kW]',
+          data: gridTotals,
+          borderColor: '#2563eb',
+          backgroundColor: 'rgba(37, 99, 235, 0.15)',
+          fill: true,
+          borderWidth: 2,
+          pointRadius: 0
+        },
+        {
+          label: 'Site Baseline Load [kW]',
+          data: siteLoads,
+          borderColor: '#94a3b8',
+          borderWidth: 1.5,
+          borderDash: [3, 3],
+          pointRadius: 0
+        },
+        {
+          label: 'Grid Limit (12.0 kW)',
+          data: gridLimits,
+          borderColor: '#dc2626',
+          borderWidth: 2,
+          borderDash: [6, 4],
+          pointRadius: 0
+        }
+      ]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: { legend: { position: 'top' } },
+      scales: {
+        x: { ticks: { maxTicksLimit: 12 } },
+        y: { title: { display: true, text: 'Power [kW]' }, min: 0, max: 14 }
+      }
+    }
+  });
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  loadDispatchData();
+});
+</script>
+{% endblock %}

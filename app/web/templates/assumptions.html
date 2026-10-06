@@ -1,0 +1,127 @@
+{% extends "base.html" %}
+
+{% block title %}Assumptions &amp; Data Quality - Virtual TES Gen0{% endblock %}
+
+{% block content %}
+<div class="card-header" style="margin-bottom: 20px;">
+  <div>
+    <h2 style="font-size: 1.3rem; font-weight: 700;">Engineering Assumptions &amp; Data Quality Audit</h2>
+    <p style="color: var(--text-muted); font-size: 0.85rem;">
+      Full transparency on modeled vs measured physical parameters and market data integrity.
+    </p>
+  </div>
+  <span class="badge badge-amber">AUDIT PANEL</span>
+</div>
+
+<!-- High-Level Calibration Status Indicators -->
+<div class="kpi-grid">
+  <div class="kpi-card">
+    <div class="kpi-label">Physical Gen0 Calibrated</div>
+    <div class="kpi-value" style="color: var(--danger);">NO</div>
+    <div class="kpi-sub">Pre-fabrication engineering model</div>
+  </div>
+  <div class="kpi-card">
+    <div class="kpi-label">Live ENTSO-E Authenticated</div>
+    <div class="kpi-value" style="color: var(--warning);">NO / OPTIONAL</div>
+    <div class="kpi-sub">Ready via API token or CSV</div>
+  </div>
+  <div class="kpi-card">
+    <div class="kpi-label">Active Model Version</div>
+    <div class="kpi-value" style="font-size: 1.1rem; color: var(--primary);">Phase 5.7 / full_span_v1</div>
+    <div class="kpi-sub">Strict full-span / dispatchable separation</div>
+  </div>
+  <div class="kpi-card">
+    <div class="kpi-label">Saved Scenarios in SQLite</div>
+    <div class="kpi-value">{{ scenarios_count }}</div>
+    <div class="kpi-sub">Append-only versioned presets</div>
+  </div>
+</div>
+
+<!-- Assumptions Inventory Table (Section 27) -->
+<div class="card">
+  <div class="card-header">
+    <h3 class="card-title">Physical &amp; Operational Assumptions Inventory</h3>
+    <span class="badge badge-blue">METADATA AUDIT</span>
+  </div>
+  <div class="table-container">
+    <table class="engineering-table">
+      <thead>
+        <tr>
+          <th>Subsystem / Parameter</th>
+          <th>Modeled Value</th>
+          <th>Engineering Status</th>
+          <th>Design Basis &amp; Risk Mitigation</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><strong>Quartz Sand Heat Capacity Model</strong></td>
+          <td class="num-col">Cp(T) = T + 427 J/(kg·K)</td>
+          <td><span class="badge badge-green">CALCULATED / LITERATURE</span></td>
+          <td>Standard literature enthalpy model for quartz sand (80–300 °C). Verified analytically.</td>
+        </tr>
+        <tr>
+          <td><strong>Sand Bulk Density</strong></td>
+          <td class="num-col">1600.0 kg/m³</td>
+          <td><span class="badge badge-amber">ENGINEERING ESTIMATE</span></td>
+          <td>Grain packing varies from 1450 to 1650 kg/m³. <strong>MUST BE MEASURED BEFORE FABRICATION.</strong></td>
+        </tr>
+        <tr>
+          <td><strong>Heat Exchanger Coil Geometry</strong></td>
+          <td class="num-col">60.3 × 2.0 mm / 1.55 m²</td>
+          <td><span class="badge badge-blue">REFERENCE SPECIFICATION</span></td>
+          <td>AISI 304L, 60.3 × 2.0 mm tube (ID ≈ 56.3 mm), ~420 mm mean coil diameter, ~6 turns, ~8.0–8.5 m length, ~1.55 m² external area.</td>
+        </tr>
+        <tr>
+          <td><strong>Heat Exchanger Overall U</strong></td>
+          <td class="num-col">9.0 W/(m²·K)</td>
+          <td><span class="badge badge-amber">ENGINEERING ESTIMATE</span></td>
+          <td>Lumped-bed helical coil air-in-sand estimate. Scaled benchmark test up to 25 W/m²K not yet validated.</td>
+        </tr>
+        <tr>
+          <td><strong>Displaced Vessel Volumes</strong></td>
+          <td class="num-col">24.0 L (HX) + 8.0 L (Internals)</td>
+          <td><span class="badge badge-amber">ENGINEERING ESTIMATE</span></td>
+          <td>Based on 60.3 mm OD tube geometry and 6 cartridge heater drywells. Verification on fabrication CAD.</td>
+        </tr>
+        <tr>
+          <td><strong>Storage Standing Heat Loss</strong></td>
+          <td class="num-col">2.0 % / day</td>
+          <td><span class="badge badge-amber">SOFTWARE ASSUMPTION</span></td>
+          <td>Provisional assumption for 100 mm insulation jacket. Sensitivity swept up to 30%/day.</td>
+        </tr>
+        <tr>
+          <td><strong>Charging Efficiency (η_charge)</strong></td>
+          <td class="num-col">0.95 (95.0%)</td>
+          <td><span class="badge badge-amber">ENGINEERING ESTIMATE</span></td>
+          <td>Cartridge drywells embedded inside sand bed. Real losses depend on drywell neck conduction.</td>
+        </tr>
+        <tr>
+          <td><strong>Discharging Efficiency (η_discharge)</strong></td>
+          <td class="num-col">0.90 (90.0%)</td>
+          <td><span class="badge badge-amber">ENGINEERING ESTIMATE</span></td>
+          <td>Process ducting thermal losses. Subject to external duct insulation quality.</td>
+        </tr>
+        <tr>
+          <td><strong>Auxiliary Electrical Load</strong></td>
+          <td class="num-col">50.0 W (0.05 kW)</td>
+          <td><span class="badge badge-amber">ENGINEERING ESTIMATE</span></td>
+          <td>Estimated power draw for process blower and PLC/control circuitry during operation.</td>
+        </tr>
+        <tr>
+          <td><strong>Process Heat Demand</strong></td>
+          <td class="num-col">1.50 kW continuous</td>
+          <td><span class="badge badge-blue">REFERENCE ASSUMPTION</span></td>
+          <td>Representative industrial drying process benchmark requirement.</td>
+        </tr>
+        <tr>
+          <td><strong>Grid Connection Limit</strong></td>
+          <td class="num-col">12.00 kW</td>
+          <td><span class="badge badge-green">SPECIFIED LIMIT</span></td>
+          <td>Strict site connection ceiling. Headroom clipping enforced at 9.95 kW max charging.</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

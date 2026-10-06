@@ -1,0 +1,625 @@
+<!-- Component: Live Virtual TES Shadow Runtime (Phase 5.8.2) -->
+<div id="shadow-runtime-card-container"
+     hx-get="/api/shadow/live-card"
+     hx-trigger="every 5s"
+     hx-swap="outerHTML"
+     style="margin-bottom: 24px;">
+
+  <!-- SHADOW CONTROLS & STATUS CARD -->
+  <div class="card" style="margin-bottom: 16px; border-top: 4px solid {% if shadow.status == 'RUNNING' %}#16a34a{% elif shadow.status == 'PAUSED' %}#d97706{% else %}#64748b{% endif %};">
+    <div class="card-header" style="padding-bottom: 10px; margin-bottom: 12px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
+      <div style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
+        <h3 class="card-title" style="margin: 0; font-size: 1.15rem; display: flex; align-items: center; gap: 8px;">
+          <span>⚡ VIRTUAL TES SHADOW DIGITAL TWIN</span>
+        </h3>
+        <span class="badge {% if shadow.status == 'RUNNING' %}badge-green{% elif shadow.status == 'PAUSED' %}badge-amber{% else %}badge-slate{% endif %}" style="font-size: 0.85rem; padding: 4px 10px; font-weight: 700;">
+          {% if shadow.status == 'RUNNING' %}● RUNNING{% elif shadow.status == 'PAUSED' %}❚❚ PAUSED{% else %}■ STOPPED{% endif %}
+        </span>
+        <span class="badge badge-slate" style="font-size: 0.72rem;">ZERO HARDWARE COMMANDS</span>
+      </div>
+
+      <!-- Action Control Buttons -->
+      <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+        {% if not user or user.is_admin %}
+          {% if shadow.status != 'RUNNING' %}
+          <button type="button" class="btn btn-primary" onclick="openStartModal()" style="font-size: 0.82rem; padding: 6px 14px; background: #16a34a; border-color: #16a34a;">
+            ▶ START SHADOW
+          </button>
+          {% endif %}
+
+          {% if shadow.status == 'RUNNING' %}
+          <button type="button" class="btn btn-outline" hx-post="/api/shadow/pause" hx-target="#shadow-runtime-card-container" hx-swap="outerHTML" style="font-size: 0.82rem; padding: 6px 12px; color: #d97706; border-color: #d97706;">
+            ❚❚ PAUSE
+          </button>
+          {% elif shadow.status == 'PAUSED' %}
+          <button type="button" class="btn btn-primary" hx-post="/api/shadow/resume" hx-target="#shadow-runtime-card-container" hx-swap="outerHTML" style="font-size: 0.82rem; padding: 6px 12px; background: #2563eb;">
+            ▶ RESUME
+          </button>
+          {% endif %}
+
+          {% if shadow.status in ['RUNNING', 'PAUSED'] %}
+          <button type="button" class="btn btn-outline" hx-post="/api/shadow/stop" hx-target="#shadow-runtime-card-container" hx-swap="outerHTML" style="font-size: 0.82rem; padding: 6px 12px; color: #dc2626; border-color: #dc2626;">
+            ■ STOP
+          </button>
+          {% endif %}
+
+          <button type="button" class="btn btn-outline" hx-post="/api/shadow/reoptimize" hx-target="#shadow-runtime-card-container" hx-swap="outerHTML" style="font-size: 0.82rem; padding: 6px 12px;">
+            ⚡ REOPTIMIZE NOW
+          </button>
+
+          <button type="button" class="btn btn-outline" onclick="openResetModal()" style="font-size: 0.82rem; padding: 6px 12px; color: #64748b;">
+            ↺ RESET STATE
+          </button>
+        {% else %}
+          <span class="badge badge-amber" style="font-size: 0.75rem; padding: 4px 8px;">READ-ONLY MODE (VIEWER)</span>
+        {% endif %}
+
+        <button type="button" class="btn btn-outline" hx-get="/api/shadow/live-card" hx-target="#shadow-runtime-card-container" hx-swap="outerHTML" title="Auto-refreshes every 5s" style="font-size: 0.75rem; padding: 6px 10px;">
+          ↻ 5s
+        </button>
+      </div>
+    </div>
+
+    {% if shadow.has_energy_balance_error %}
+    <div style="background: #fef2f2; border-left: 4px solid #ef4444; padding: 10px 16px; border-radius: 4px; margin-bottom: 14px; color: #991b1b; font-weight: 700; font-size: 0.85rem;">
+      ⚠ SHADOW ENERGY BALANCE ERROR: Residual exceeds numerical tolerance (1e-4 kWh). Check interval records below.
+    </div>
+    {% endif %}
+
+    <!-- LIVE STATE TILES -->
+    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 12px; margin-bottom: 16px;">
+      <!-- Tile 1: SOC -->
+      <div style="background: #f8fafc; border: 1px solid var(--border-color); border-radius: 6px; padding: 12px;">
+        <div style="font-size: 0.75rem; color: var(--text-muted); font-weight: 600; text-transform: uppercase;">State of Charge (SOC)</div>
+        <div style="display: flex; align-items: baseline; gap: 6px; margin: 4px 0;">
+          <span style="font-size: 1.8rem; font-weight: 800; color: var(--primary, #2563eb);">{{ shadow.soc_percent }} %</span>
+        </div>
+        <div style="width: 100%; background: #e2e8f0; height: 6px; border-radius: 3px; overflow: hidden; margin-top: 4px;">
+          <div style="background: var(--primary, #2563eb); height: 100%; width: {{ [100.0, shadow.soc_percent]|min }}%;"></div>
+        </div>
+        <div style="font-size: 0.72rem; color: var(--text-muted); margin-top: 6px;">
+          Optimizer window: 10% &rarr; 100%
+        </div>
+      </div>
+
+      <!-- Tile 2: Stored Energy -->
+      <div style="background: #f8fafc; border: 1px solid var(--border-color); border-radius: 6px; padding: 12px;">
+        <div style="font-size: 0.75rem; color: var(--text-muted); font-weight: 600; text-transform: uppercase;">Stored Thermal Energy</div>
+        <div style="display: flex; align-items: baseline; gap: 6px; margin: 4px 0;">
+          <span style="font-size: 1.8rem; font-weight: 800; color: #0f172a;">{{ shadow.stored_energy_kwh }}</span>
+          <span style="font-size: 0.95rem; color: var(--text-muted); font-weight: 600;">/ {{ shadow.full_span_capacity_kwh }} kWh</span>
+        </div>
+        <div style="font-size: 0.75rem; color: #166534; font-weight: 600; margin-top: 4px;">
+          Dispatchable: <strong>{{ shadow.dispatchable_remaining_kwh }} kWh</strong>
+        </div>
+        <div style="font-size: 0.72rem; color: var(--text-muted); margin-top: 2px;">
+          15 kWh full-span (80–300 °C)
+        </div>
+      </div>
+
+      <!-- Tile 3: Bulk Sand Temperature -->
+      <div style="background: #f8fafc; border: 1px solid var(--border-color); border-radius: 6px; padding: 12px;">
+        <div style="font-size: 0.75rem; color: var(--text-muted); font-weight: 600; text-transform: uppercase;">Sand Temperature</div>
+        <div style="display: flex; align-items: baseline; gap: 4px; margin: 4px 0;">
+          <span style="font-size: 1.8rem; font-weight: 800; color: #b45309;">~{{ shadow.sand_temperature_c }}</span>
+          <span style="font-size: 1.0rem; color: #b45309; font-weight: 700;">°C</span>
+        </div>
+        <div style="font-size: 0.72rem; color: var(--text-muted); margin-top: 4px;">
+          Enthalpy-based mapping: Cp(T) = T_K + 427
+        </div>
+        <div style="font-size: 0.72rem; color: var(--text-muted);">
+          Sand mass: 275.7 kg
+        </div>
+      </div>
+
+      <!-- Tile 4: Operating Mode & Boundary Countdown -->
+      <div style="background: #f8fafc; border: 1px solid var(--border-color); border-radius: 6px; padding: 12px;">
+        <div style="font-size: 0.75rem; color: var(--text-muted); font-weight: 600; text-transform: uppercase;">Execution State &amp; Action</div>
+        <div style="margin: 4px 0;">
+          <span class="badge {% if shadow.status == 'RUNNING' %}badge-green{% elif shadow.status == 'PAUSED' %}badge-amber{% else %}badge-slate{% endif %}" style="font-size: 0.85rem; font-weight: 700;">
+            {{ shadow.action_now }}
+          </span>
+        </div>
+        <div style="font-size: 0.72rem; color: var(--text-muted); margin-bottom: 4px;">
+          State Evolution: <strong>{{ shadow.state_evolution }}</strong> | Headroom: <strong>{{ shadow.available_tes_charging_headroom_kw }} kW</strong>
+        </div>
+        <div style="display: flex; justify-content: space-between; align-items: baseline; margin-top: 4px; font-size: 0.8rem;">
+          <span style="color: var(--text-muted);">Next Boundary:</span>
+          <strong>{{ shadow.next_market_boundary }}</strong>
+        </div>
+        <div style="display: flex; justify-content: space-between; align-items: baseline; font-size: 0.8rem;">
+          <span style="color: var(--text-muted);">Countdown:</span>
+          <span style="font-family: var(--font-mono); font-weight: 700; color: var(--primary, #2563eb);">{{ shadow.countdown }}</span>
+        </div>
+        <div style="font-size: 0.7rem; color: var(--text-muted); margin-top: 2px;">
+          Last update: {{ shadow.last_state_update }}
+        </div>
+      </div>
+    </div>
+
+    <!-- POWERS & GRID SUMMARY BAR (Phase 5.8.3) -->
+    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 10px; padding: 12px; background: #ffffff; border: 1px dashed var(--border-color); border-radius: 6px; margin-bottom: 12px; font-size: 0.82rem;">
+      <div>
+        <div style="color: var(--text-muted); font-size: 0.72rem;">Heater (Request / Actual)</div>
+        <strong style="color: {% if shadow.status == 'PAUSED' %}#d97706{% else %}#16a34a{% endif %};">{{ shadow.heater_requested_kw }} / {{ shadow.heater_actual_kw }} kW</strong>
+        <span style="font-size: 0.7rem; color: var(--text-muted); display: block;">Rating: 9.0 kW (Idealized)</span>
+      </div>
+      <div>
+        <div style="color: var(--text-muted); font-size: 0.72rem;">Process Heat Demand</div>
+        <strong style="color: #0f172a;">{{ shadow.process_heat_demand_kw }} kW</strong>
+        <span class="badge {% if shadow.process_enabled %}badge-green{% else %}badge-slate{% endif %}" style="font-size: 0.65rem; padding: 1px 5px;">
+          {% if shadow.process_enabled %}VIRTUAL ON{% else %}OFF{% endif %}
+        </span>
+      </div>
+      <div>
+        <div style="color: var(--text-muted); font-size: 0.72rem;">Available Headroom (12-2.05)</div>
+        <strong style="color: #166534;">{{ shadow.available_tes_charging_headroom_kw }} kW</strong>
+        <span style="font-size: 0.7rem; color: var(--text-muted); display: block;">Fixed charging headroom</span>
+      </div>
+      <div>
+        <div style="color: var(--text-muted); font-size: 0.72rem;">Current Unused Grid Margin</div>
+        <strong style="color: var(--primary, #2563eb);">{{ shadow.current_unused_grid_margin_kw }} kW</strong>
+        <span style="font-size: 0.7rem; color: var(--text-muted); display: block;">12.0 kW - (P_heater + 2.05)</span>
+      </div>
+      <div>
+        <div style="color: var(--text-muted); font-size: 0.72rem;">Grid Power / Limit</div>
+        <strong style="color: {% if shadow.grid_total_kw > 11.5 %}#dc2626{% else %}#0f172a{% endif %};">
+          {{ shadow.grid_total_kw }} / {{ shadow.grid_limit_kw }} kW
+        </strong>
+        <span style="font-size: 0.7rem; color: var(--text-muted); display: block;">Margin @ 9kW: {{ shadow.grid_margin_at_full_charge_kw }} kW</span>
+      </div>
+      <div>
+        <div style="color: var(--text-muted); font-size: 0.72rem;">Action Reason Code</div>
+        <span class="badge badge-slate" style="font-family: var(--font-mono); font-size: 0.7rem;">
+          {{ shadow.reason_code }}
+        </span>
+      </div>
+    </div>
+
+    <!-- Actuation Model Warning (Requirement 6) -->
+    <div style="background: #fffbeb; border: 1px solid #fde68a; border-radius: 6px; padding: 8px 12px; margin-bottom: 16px; font-size: 0.76rem; color: #92400e; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
+      <div>
+        <strong>HEATER ACTUATION: {{ shadow.actuation_model }}</strong> &mdash; <span>⚠ {{ shadow.staging_warning }}</span>
+      </div>
+      <span class="badge badge-amber" style="font-size: 0.68rem;">HARDWARE STAGING: NOT YET IMPLEMENTED</span>
+    </div>
+
+    <!-- PLANNED NEXT ACTIONS TABLE -->
+    {% if shadow.planned_actions %}
+    <div style="margin-bottom: 16px;">
+      <div style="font-size: 0.8rem; font-weight: 700; color: var(--text-main); margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.04em;">
+        NEXT PLANNED ACTIONS (RECEDING-HORIZON OPTIMIZER SCHEDULE)
+      </div>
+      <div style="overflow-x: auto;">
+        <table class="table" style="font-size: 0.78rem; margin-bottom: 0;">
+          <thead>
+            <tr>
+              <th>Interval</th>
+              <th>Spot Price</th>
+              <th>Action</th>
+              <th>Heater Power</th>
+              <th>HX Discharge</th>
+              <th>Predicted SOC</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for act in shadow.planned_actions %}
+            <tr>
+              <td style="font-weight: 600;">{{ act.interval }}</td>
+              <td class="num-col">{{ "%.2f"|format(act.spot_price) }} €/MWh</td>
+              <td>
+                {% if act.charge_kw > 0.05 and act.discharge_kw > 0.05 %}
+                  <span class="badge badge-green">CHARGE + PROCESS</span>
+                {% elif act.charge_kw > 0.05 %}
+                  <span class="badge badge-green">CHARGE</span>
+                {% elif act.discharge_kw > 0.05 %}
+                  <span class="badge badge-blue">DISCHARGE</span>
+                {% else %}
+                  <span class="badge badge-slate">IDLE</span>
+                {% endif %}
+              </td>
+              <td class="num-col" style="font-weight: 600; color: #16a34a;">{{ "%.2f"|format(act.charge_kw) }} kW</td>
+              <td class="num-col" style="font-weight: 600; color: #2563eb;">{{ "%.2f"|format(act.discharge_kw) }} kW</td>
+              <td class="num-col" style="font-weight: 600;">{{ "%.1f"|format(act.predicted_soc_pct) }} %</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+    {% endif %}
+
+    <!-- LIVE TREND CHARTS (Phase 5.8.2 / Section 19) -->
+    <div style="margin-bottom: 20px;">
+      <div style="font-size: 0.8rem; font-weight: 700; color: var(--text-main); margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.04em;">
+        LIVE SHADOW TREND CHARTS (PERSISTED HISTORY)
+      </div>
+      <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 14px;">
+        <!-- Chart 1: SOC %, Sand Temp °C, Stored Energy kWh -->
+        <div style="background: #ffffff; border: 1px solid var(--border-color); border-radius: 6px; padding: 12px;">
+          <div style="font-size: 0.75rem; font-weight: 700; color: var(--text-muted); margin-bottom: 8px; text-transform: uppercase;">
+            TES Thermal State (SOC, Temp, Energy)
+          </div>
+          <div style="height: 190px; position: relative;">
+            <canvas id="shadowStateChart"></canvas>
+          </div>
+        </div>
+
+        <!-- Chart 2: Powers (Requested Heater, Actual Heater, TES Discharge, HX Max, Process Demand) -->
+        <div style="background: #ffffff; border: 1px solid var(--border-color); border-radius: 6px; padding: 12px;">
+          <div style="font-size: 0.75rem; font-weight: 700; color: var(--text-muted); margin-bottom: 8px; text-transform: uppercase;">
+            Power Flows (Heater, Discharge, HX, Demand)
+          </div>
+          <div style="height: 190px; position: relative;">
+            <canvas id="shadowPowerChart"></canvas>
+          </div>
+        </div>
+
+        <!-- Chart 3: Market & Grid (Spot Price, Total Grid Power, Grid Limit) -->
+        <div style="background: #ffffff; border: 1px solid var(--border-color); border-radius: 6px; padding: 12px;">
+          <div style="font-size: 0.75rem; font-weight: 700; color: var(--text-muted); margin-bottom: 8px; text-transform: uppercase;">
+            Market Price &amp; Grid Limit (12 kW)
+          </div>
+          <div style="height: 190px; position: relative;">
+            <canvas id="shadowGridChart"></canvas>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- EXECUTED INTERVAL HISTORY TABLE -->
+    <div>
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+        <div style="font-size: 0.8rem; font-weight: 700; color: var(--text-main); text-transform: uppercase; letter-spacing: 0.04em;">
+          EXECUTED INTERVAL HISTORY (IMMUTABLE DATABASE AUDIT)
+        </div>
+
+        <span style="font-size: 0.72rem; color: var(--text-muted);">Total intervals: {{ shadow.history_rows|length }}</span>
+      </div>
+      {% if shadow.history_rows %}
+      <div style="overflow-x: auto; max-height: 280px; overflow-y: auto;">
+        <table class="table" style="font-size: 0.74rem; margin-bottom: 0;">
+          <thead style="position: sticky; top: 0; background: #f8fafc; z-index: 1;">
+            <tr>
+              <th>Time</th>
+              <th>Spot €/MWh</th>
+              <th>Eff. €/MWh</th>
+              <th>Action</th>
+              <th>Chg Req</th>
+              <th>Chg Act</th>
+              <th>Dis Act</th>
+              <th>Demand</th>
+              <th>HX Limit</th>
+              <th>SOC Start</th>
+              <th>SOC End</th>
+              <th>Temp End</th>
+              <th>Grid kW</th>
+              <th>Elec kWh</th>
+              <th>Cost €</th>
+              <th>Residual</th>
+              <th>Reason</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for row in shadow.history_rows %}
+            <tr>
+              <td style="font-weight: 600; white-space: nowrap;">{{ row.time }}</td>
+              <td class="num-col">{{ row.spot_price }}</td>
+              <td class="num-col">{{ row.effective_price }}</td>
+              <td>
+                <span class="badge {% if 'CHARGE' in row.action %}badge-green{% elif 'SUPPLY' in row.action %}badge-blue{% else %}badge-slate{% endif %}" style="font-size: 0.68rem;">
+                  {{ row.action }}
+                </span>
+              </td>
+              <td class="num-col">{{ row.charge_requested }}</td>
+              <td class="num-col" style="font-weight: 600; color: #16a34a;">{{ row.charge_actual }}</td>
+              <td class="num-col" style="font-weight: 600; color: #2563eb;">{{ row.discharge_actual }}</td>
+              <td class="num-col">{{ row.process_demand }}</td>
+              <td class="num-col">{{ row.hx_limit }}</td>
+              <td class="num-col">{{ row.soc_start }}</td>
+              <td class="num-col" style="font-weight: 600;">{{ row.soc_end }}</td>
+              <td class="num-col">{{ row.temp_end }}</td>
+              <td class="num-col">{{ row.grid_power }}</td>
+              <td class="num-col">{{ row.electricity_kwh }}</td>
+              <td class="num-col" style="font-weight: 600;">{{ row.cost_eur }}</td>
+              <td class="num-col" style="font-family: var(--font-mono); font-size: 0.68rem; color: {% if row.residual_kwh|float > 0.0001 %}#dc2626{% else %}#16a34a{% endif %};">
+                {{ row.residual_kwh }}
+              </td>
+              <td style="font-family: var(--font-mono); font-size: 0.68rem;">{{ row.reason }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% else %}
+      <div style="padding: 16px; text-align: center; color: var(--text-muted); font-size: 0.8rem; background: #f8fafc; border-radius: 4px;">
+        No completed 15-minute intervals executed in this session yet. Interval steps record automatically at each market boundary.
+      </div>
+      {% endif %}
+    </div>
+  </div>
+</div>
+
+<!-- START MODAL -->
+<div id="start-modal" style="display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 1000; align-items: center; justify-content: center;">
+  <div style="background: white; border-radius: 8px; max-width: 480px; width: 90%; padding: 20px; box-shadow: 0 10px 25px rgba(0,0,0,0.2);">
+    <h3 style="margin-top: 0; margin-bottom: 8px; font-size: 1.15rem;">Start Virtual TES Shadow Plant</h3>
+    <div style="background: #eff6ff; border-left: 3px solid #2563eb; padding: 8px 12px; font-size: 0.78rem; color: #1e40af; margin-bottom: 14px;">
+      <strong>VIRTUAL INITIAL CONDITION:</strong> Specify the starting physical state. Not physically measured.
+    </div>
+
+    <form onsubmit="handleStartShadow(event)">
+      <div class="form-group" style="margin-bottom: 12px;">
+        <label class="form-label" style="font-size: 0.8rem;">Initial State Specification</label>
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 8px;">
+          <div>
+            <label style="font-size: 0.75rem; color: var(--text-muted);">Initial SOC (%)</label>
+            <input type="number" id="start-soc" class="form-input" min="0" max="100" step="1" value="50" oninput="clearOtherInputs('soc')">
+          </div>
+          <div>
+            <label style="font-size: 0.75rem; color: var(--text-muted);">Initial Energy (kWh)</label>
+            <input type="number" id="start-energy" class="form-input" min="0" max="15" step="0.1" placeholder="Optional" oninput="clearOtherInputs('energy')">
+          </div>
+        </div>
+        <div>
+          <label style="font-size: 0.75rem; color: var(--text-muted);">Initial Sand Temperature (°C)</label>
+          <input type="number" id="start-temp" class="form-input" min="80" max="300" step="1" placeholder="Optional (80–300 °C)" oninput="clearOtherInputs('temp')">
+        </div>
+      </div>
+
+      <div class="form-group" style="margin-bottom: 16px;">
+        <label class="form-label" style="font-size: 0.8rem;">Virtual Process Heat Demand (Dryer)</label>
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
+          <div>
+            <label style="font-size: 0.75rem; color: var(--text-muted);">Continuous Heat Demand (kW)</label>
+            <input type="number" id="start-demand" class="form-input" min="0" max="10" step="0.1" value="1.5">
+          </div>
+          <div style="display: flex; flex-direction: column; justify-content: center;">
+            <label style="font-size: 0.75rem; color: var(--text-muted); margin-bottom: 4px;">Process State</label>
+            <label style="display: flex; align-items: center; gap: 6px; font-size: 0.82rem; cursor: pointer;">
+              <input type="checkbox" id="start-process-enabled" checked> Enable Virtual Process
+            </label>
+          </div>
+        </div>
+      </div>
+
+      <div style="display: flex; justify-content: flex-end; gap: 10px;">
+        <button type="button" class="btn btn-outline" onclick="closeStartModal()">Cancel</button>
+        <button type="submit" class="btn btn-primary" style="background: #16a34a; border-color: #16a34a;">Start Shadow</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- RESET MODAL -->
+<div id="reset-modal" style="display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 1000; align-items: center; justify-content: center;">
+  <div style="background: white; border-radius: 8px; max-width: 440px; width: 90%; padding: 20px; box-shadow: 0 10px 25px rgba(0,0,0,0.2);">
+    <h3 style="margin-top: 0; margin-bottom: 8px; font-size: 1.15rem; color: #dc2626;">Reset Virtual TES State</h3>
+    <p style="font-size: 0.82rem; color: var(--text-muted); margin-bottom: 12px;">
+      Requires explicit confirmation. Resets current SOC and temperature. Past interval history is <strong>preserved</strong> and never deleted.
+    </p>
+
+    <form onsubmit="handleResetShadow(event)">
+      <div class="form-group" style="margin-bottom: 12px;">
+        <label class="form-label" style="font-size: 0.8rem;">Target Reset SOC (%)</label>
+        <input type="number" id="reset-soc" class="form-input" min="0" max="100" step="1" value="50" required>
+      </div>
+      <div class="form-group" style="margin-bottom: 16px;">
+        <label class="form-label" style="font-size: 0.8rem;">Audit Reason for Reset</label>
+        <input type="text" id="reset-reason" class="form-input" value="MANUAL_ENGINEERING_RESET" required>
+      </div>
+
+      <div style="display: flex; justify-content: flex-end; gap: 10px;">
+        <button type="button" class="btn btn-outline" onclick="closeResetModal()">Cancel</button>
+        <button type="submit" class="btn btn-primary" style="background: #dc2626; border-color: #dc2626;">Confirm Reset</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script>
+function openStartModal() {
+  const m = document.getElementById('start-modal');
+  if (m) m.style.display = 'flex';
+}
+function closeStartModal() {
+  const m = document.getElementById('start-modal');
+  if (m) m.style.display = 'none';
+}
+function openResetModal() {
+  const m = document.getElementById('reset-modal');
+  if (m) m.style.display = 'flex';
+}
+function closeResetModal() {
+  const m = document.getElementById('reset-modal');
+  if (m) m.style.display = 'none';
+}
+function clearOtherInputs(source) {
+  if (source === 'soc') {
+    document.getElementById('start-energy').value = '';
+    document.getElementById('start-temp').value = '';
+  } else if (source === 'energy') {
+    document.getElementById('start-soc').value = '';
+    document.getElementById('start-temp').value = '';
+  } else if (source === 'temp') {
+    document.getElementById('start-soc').value = '';
+    document.getElementById('start-energy').value = '';
+  }
+}
+
+async function handleStartShadow(e) {
+  e.preventDefault();
+  const socVal = document.getElementById('start-soc').value;
+  const energyVal = document.getElementById('start-energy').value;
+  const tempVal = document.getElementById('start-temp').value;
+  const demandVal = parseFloat(document.getElementById('start-demand').value) || 1.5;
+  const enabledVal = document.getElementById('start-process-enabled').checked;
+
+  const payload = {
+    initial_soc_percent: socVal ? parseFloat(socVal) : null,
+    initial_energy_kwh: energyVal ? parseFloat(energyVal) : null,
+    initial_temp_c: tempVal ? parseFloat(tempVal) : null,
+    process_demand_kw: demandVal,
+    process_enabled: enabledVal,
+  };
+
+  try {
+    const res = await fetch('/api/shadow/start', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    if (res.ok) {
+      closeStartModal();
+      htmx.trigger('#shadow-runtime-card-container', 'every 5s');
+    }
+  } catch (err) {
+    console.error('Failed starting shadow:', err);
+  }
+}
+
+async function handleResetShadow(e) {
+  e.preventDefault();
+  const targetSoc = parseFloat(document.getElementById('reset-soc').value) || 50.0;
+  const reason = document.getElementById('reset-reason').value || 'MANUAL_RESET';
+
+  try {
+    const res = await fetch('/api/shadow/reset', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ target_soc_percent: targetSoc, reason: reason })
+    });
+    if (res.ok) {
+      closeResetModal();
+      htmx.trigger('#shadow-runtime-card-container', 'every 5s');
+    }
+  } catch (err) {
+    console.error('Failed resetting shadow:', err);
+  }
+}
+
+window.shadowCharts = window.shadowCharts || {};
+
+async function renderShadowCharts() {
+  try {
+    const res = await fetch('/api/shadow/history');
+    let records = [];
+    if (res.ok) {
+      records = await res.json();
+    }
+    
+    let labels, socData, tempData, energyData;
+    let chgActData, disActData, hxLimitData, demandData;
+    let priceData, gridData, gridLimitData;
+
+    if (records.length === 0) {
+      labels = ['Now ({{ shadow.countdown }})'];
+      socData = [{{ shadow.soc_percent }}];
+      tempData = [{{ shadow.sand_temperature_c }}];
+      energyData = [{{ shadow.stored_energy_kwh }}];
+      chgActData = [{{ shadow.heater_actual_kw }}];
+      disActData = [{{ shadow.tes_discharge_kw }}];
+      hxLimitData = [{{ shadow.hx_max_available_kw }}];
+      demandData = [{{ shadow.process_heat_demand_kw }}];
+      priceData = [{{ shadow.spot_price_eur_mwh }}];
+      gridData = [{{ shadow.grid_total_kw }}];
+      gridLimitData = [12.0];
+    } else {
+      labels = records.map(r => r.start_utc.slice(11, 16));
+      socData = records.map(r => r.soc_end_percent);
+      tempData = records.map(r => r.sand_temperature_c);
+      energyData = records.map(r => (r.soc_end_percent / 100.0) * 15.0);
+      chgActData = records.map(r => r.charge_power_kw);
+      disActData = records.map(r => r.discharge_power_kw);
+      hxLimitData = records.map(r => {{ shadow.hx_max_available_kw }});
+      demandData = records.map(r => {{ shadow.process_heat_demand_kw }});
+      priceData = records.map(r => r.spot_price_eur_mwh);
+      gridData = records.map(r => r.charge_power_kw + 2.05);
+      gridLimitData = records.map(() => 12.0);
+    }
+
+    const ctx1 = document.getElementById('shadowStateChart');
+    if (ctx1 && window.Chart) {
+      if (window.shadowCharts.state) window.shadowCharts.state.destroy();
+      window.shadowCharts.state = new Chart(ctx1, {
+        type: 'line',
+        data: {
+          labels: labels,
+          datasets: [
+            { label: 'SOC (%)', data: socData, borderColor: '#2563eb', backgroundColor: 'rgba(37, 99, 235, 0.1)', yAxisID: 'ySOC', tension: 0.2 },
+            { label: 'Sand Temp (°C)', data: tempData, borderColor: '#b45309', borderDash: [4, 4], yAxisID: 'yTemp', tension: 0.2 },
+            { label: 'Stored Energy (kWh)', data: energyData, borderColor: '#16a34a', yAxisID: 'yEnergy', tension: 0.2 }
+          ]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          scales: {
+            ySOC: { type: 'linear', position: 'left', min: 0, max: 100, title: { display: true, text: 'SOC %' } },
+            yTemp: { type: 'linear', position: 'right', min: 60, max: 320, grid: { drawOnChartArea: false }, title: { display: true, text: 'Temp °C' } },
+            yEnergy: { display: false, min: 0, max: 15 }
+          }
+        }
+      });
+    }
+
+    const ctx2 = document.getElementById('shadowPowerChart');
+    if (ctx2 && window.Chart) {
+      if (window.shadowCharts.power) window.shadowCharts.power.destroy();
+      window.shadowCharts.power = new Chart(ctx2, {
+        type: 'line',
+        data: {
+          labels: labels,
+          datasets: [
+            { label: 'Heater Actual (kW)', data: chgActData, borderColor: '#16a34a', backgroundColor: 'rgba(22, 163, 74, 0.1)', fill: true, tension: 0.1 },
+            { label: 'TES Discharge (kW)', data: disActData, borderColor: '#2563eb', tension: 0.1 },
+            { label: 'HX Max Limit (kW)', data: hxLimitData, borderColor: '#9333ea', borderDash: [2, 2], tension: 0.1 },
+            { label: 'Process Demand (kW)', data: demandData, borderColor: '#dc2626', borderDash: [5, 5], tension: 0.1 }
+          ]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          scales: {
+            y: { min: 0, max: 10, title: { display: true, text: 'Power (kW)' } }
+          }
+        }
+      });
+    }
+
+    const ctx3 = document.getElementById('shadowGridChart');
+    if (ctx3 && window.Chart) {
+      if (window.shadowCharts.grid) window.shadowCharts.grid.destroy();
+      window.shadowCharts.grid = new Chart(ctx3, {
+        type: 'line',
+        data: {
+          labels: labels,
+          datasets: [
+            { label: 'Spot Price (€/MWh)', data: priceData, borderColor: '#0284c7', yAxisID: 'yPrice', tension: 0.1 },
+            { label: 'Total Grid (kW)', data: gridData, borderColor: '#0f172a', yAxisID: 'yGrid', tension: 0.1 },
+            { label: 'Grid Limit 12 kW', data: gridLimitData, borderColor: '#dc2626', borderDash: [4, 4], yAxisID: 'yGrid' }
+          ]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          scales: {
+            yPrice: { type: 'linear', position: 'left', title: { display: true, text: '€/MWh' } },
+            yGrid: { type: 'linear', position: 'right', min: 0, max: 14, grid: { drawOnChartArea: false }, title: { display: true, text: 'Grid kW' } }
+          }
+        }
+      });
+    }
+  } catch (err) {
+    console.error('Error rendering shadow charts:', err);
+  }
+}
+
+setTimeout(renderShadowCharts, 250);
+document.body.addEventListener('htmx:afterSwap', function(evt) {
+  if (evt.detail.target.id === 'shadow-runtime-card-container') {
+    setTimeout(renderShadowCharts, 100);
+  }
+});
+</script>
+

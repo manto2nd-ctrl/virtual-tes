@@ -1,0 +1,190 @@
+{% extends "base.html" %}
+
+{% block title %}Sizing Study - Virtual TES Gen0{% endblock %}
+
+{% block content %}
+<div class="card-header" style="margin-bottom: 20px;">
+  <div>
+    <h2 style="font-size: 1.3rem; font-weight: 700;">Systematic TES Capacity &amp; Charging Power Sizing Matrix</h2>
+    <p style="color: var(--text-muted); font-size: 0.85rem;">
+      Parametric sweep across full-span physical capacities (10, 15, 20, 30 kWh) and heater ratings (6, 9, 12 kW).
+    </p>
+  </div>
+  <span class="badge badge-blue">FIXED GEN0 HX (1.55 m²)</span>
+</div>
+
+<!-- Non-Prescriptive Benchmark Cards (Section 25) -->
+<div class="kpi-grid">
+  <div class="kpi-card">
+    <div class="kpi-label">Lowest Modeled Heat Cost</div>
+    {% if lowest_cost %}
+    <div class="kpi-value">{{ "%.2f"|format(lowest_cost.cost_eur_per_mwh_heat) }}<span class="kpi-unit">EUR/MWh</span></div>
+    <div class="kpi-sub">{{ "%.0f"|format(lowest_cost.thermal_capacity_full_span_kwh) }} kWh full ({{ "%.1f"|format(lowest_cost.dispatchable_capacity_kwh) }} disp) / {{ "%.0f"|format(lowest_cost.charge_power_kw) }} kW</div>
+    {% else %}
+    <div class="kpi-value">N/A</div>
+    {% endif %}
+  </div>
+  <div class="kpi-card">
+    <div class="kpi-label">Highest Modeled Savings</div>
+    {% if lowest_cost %}
+    <div class="kpi-value">{{ "%.1f"|format(lowest_cost.savings_vs_direct_percent) }}<span class="kpi-unit">%</span></div>
+    <div class="kpi-sub">vs Direct Electric Heating</div>
+    {% else %}
+    <div class="kpi-value">N/A</div>
+    {% endif %}
+  </div>
+  <div class="kpi-card">
+    <div class="kpi-label">Lowest Cap Meeting &ge;99.5% Rel</div>
+    {% if lowest_cap_995 %}
+    <div class="kpi-value">{{ "%.0f"|format(lowest_cap_995.thermal_capacity_full_span_kwh) }}<span class="kpi-unit">kWh</span></div>
+    <div class="kpi-sub">{{ "%.1f"|format(lowest_cap_995.dispatchable_capacity_kwh) }} kWh disp / {{ "%.0f"|format(lowest_cap_995.charge_power_kw) }} kW ({{ "%.2f"|format(lowest_cap_995.heat_supply_reliability_percent) }}% rel)</div>
+    {% else %}
+    <div class="kpi-value">N/A</div>
+    {% endif %}
+  </div>
+  <div class="kpi-card">
+    <div class="kpi-label">Grid Headroom Constraint</div>
+    <div class="kpi-value">9.95<span class="kpi-unit">kW</span></div>
+    <div class="kpi-sub">12 kW grid clips 12 kW configured chg</div>
+  </div>
+</div>
+
+<!-- Sizing Matrix Table -->
+<div class="card">
+  <div class="card-header">
+    <h3 class="card-title">Sizing Sweep Results (All capacities refer to FULL-SPAN physical thermal capacity across 80–300 °C)</h3>
+    <span class="badge badge-blue">PARAMETRIC MATRIX</span>
+  </div>
+  <div class="table-container">
+    <table class="engineering-table">
+      <thead>
+        <tr>
+          <th>Full-Span Capacity</th>
+          <th>Dispatchable Cap</th>
+          <th>Sand Mass</th>
+          <th>Configured Charge Power Limit</th>
+          <th>Peak Actual Charge Power (Grid-Clipped)</th>
+          <th>Reliability</th>
+          <th>Unmet Heat</th>
+          <th>Cost/MWh Heat</th>
+          <th>Savings vs Direct</th>
+          <th>Average Stored SOC</th>
+          <th>Cycles</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for c in combinations %}
+        <tr>
+          <td><strong>{{ "%.1f"|format(c.thermal_capacity_full_span_kwh) }} kWh</strong></td>
+          <td class="num-col">{{ "%.1f"|format(c.dispatchable_capacity_kwh) }} kWh</td>
+          <td class="num-col">{{ "%.1f"|format(c.sand_mass_kg) }} kg</td>
+          <td class="num-col">{{ "%.1f"|format(c.configured_charge_power_limit_kw) }} kW</td>
+          <td class="num-col" style="{% if c.peak_actual_charge_power_kw < c.configured_charge_power_limit_kw %}color: #d97706; font-weight: 600;{% endif %}">
+            {{ "%.2f"|format(c.peak_actual_charge_power_kw) }} kW
+          </td>
+          <td class="num-col" style="color: var(--success); font-weight: 600;">{{ "%.2f"|format(c.heat_supply_reliability_percent) }} %</td>
+          <td class="num-col">{{ "%.2f"|format(c.unmet_heat_kwh) }} kWh</td>
+          <td class="num-col"><strong>{{ "%.2f"|format(c.cost_eur_per_mwh_heat) }} EUR/MWh</strong></td>
+          <td class="num-col">{{ "%.1f"|format(c.savings_vs_direct_percent) }} %</td>
+          <td class="num-col">{{ "%.1f"|format(c.average_soc_kwh) }} kWh ({{ "%.1f"|format(c.average_soc_percent) }}%)</td>
+          <td class="num-col">{{ "%.2f"|format(c.equivalent_cycles) }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- Sizing Charts Grid -->
+<div class="grid-2">
+  <div class="card">
+    <div class="card-header">
+      <h3 class="card-title">Full-Span Capacity vs Cost per MWh Useful Heat</h3>
+      <span class="badge badge-blue">CAPACITY VS COST</span>
+    </div>
+    <div class="chart-box">
+      <canvas id="chartCapCost"></canvas>
+    </div>
+  </div>
+  <div class="card">
+    <div class="card-header">
+      <h3 class="card-title">Configured vs Peak Actual Charge Power (Grid Clipping)</h3>
+      <span class="badge badge-amber">GRID HEADROOM</span>
+    </div>
+    <div class="chart-box">
+      <canvas id="chartChargeClipping"></canvas>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const combinations = {{ combinations|tojson }};
+
+document.addEventListener('DOMContentLoaded', () => {
+  // Chart 1: Capacity vs Cost by Charge Power
+  const capValues = [10, 15, 20, 30];
+  const costs6 = capValues.map(cap => {
+    const item = combinations.find(c => Math.abs(c.thermal_capacity_full_span_kwh - cap) < 0.1 && Math.abs(c.configured_charge_power_limit_kw - 6.0) < 0.1);
+    return item ? item.cost_eur_per_mwh_heat : null;
+  });
+  const costs9 = capValues.map(cap => {
+    const item = combinations.find(c => Math.abs(c.thermal_capacity_full_span_kwh - cap) < 0.1 && Math.abs(c.configured_charge_power_limit_kw - 9.0) < 0.1);
+    return item ? item.cost_eur_per_mwh_heat : null;
+  });
+  const costs12 = capValues.map(cap => {
+    const item = combinations.find(c => Math.abs(c.thermal_capacity_full_span_kwh - cap) < 0.1 && Math.abs(c.configured_charge_power_limit_kw - 12.0) < 0.1);
+    return item ? item.cost_eur_per_mwh_heat : null;
+  });
+
+  const ctxCost = document.getElementById('chartCapCost').getContext('2d');
+  new Chart(ctxCost, {
+    type: 'line',
+    data: {
+      labels: capValues.map(c => c + ' kWh'),
+      datasets: [
+        { label: '6 kW Chg', data: costs6, borderColor: '#94a3b8', borderWidth: 2, pointRadius: 4 },
+        { label: '9 kW Chg (Ref)', data: costs9, borderColor: '#2563eb', borderWidth: 2.5, pointRadius: 4 },
+        { label: '12 kW Chg', data: costs12, borderColor: '#16a34a', borderWidth: 2, pointRadius: 4 },
+      ]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: { legend: { position: 'top' } },
+      scales: {
+        x: { title: { display: true, text: 'Full-Span Capacity [kWh]' } },
+        y: { title: { display: true, text: 'EUR/MWh Useful Heat' } }
+      }
+    }
+  });
+
+  // Chart 2: Configured vs Peak Actual Charge Power
+  const uniqueCombos = combinations.slice(0, 3); // 6, 9, 12 kW
+  const labelsChg = uniqueCombos.map(c => c.configured_charge_power_limit_kw + ' kW Config');
+  const actualChg = uniqueCombos.map(c => c.peak_actual_charge_power_kw);
+  const configChg = uniqueCombos.map(c => c.configured_charge_power_limit_kw);
+
+  const ctxClip = document.getElementById('chartChargeClipping').getContext('2d');
+  new Chart(ctxClip, {
+    type: 'bar',
+    data: {
+      labels: labelsChg,
+      datasets: [
+        { label: 'Configured Heater Limit [kW]', data: configChg, backgroundColor: '#cbd5e1' },
+        { label: 'Peak Actual Draw [kW]', data: actualChg, backgroundColor: '#2563eb' }
+      ]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: { legend: { position: 'top' } },
+      scales: {
+        y: { title: { display: true, text: 'Power [kW]' }, min: 0, max: 14 }
+      }
+    }
+  });
+});
+</script>
+{% endblock %}

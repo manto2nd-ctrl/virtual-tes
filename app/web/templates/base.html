@@ -1,0 +1,462 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{% block title %}Virtual TES Gen0 Dashboard{% endblock %}</title>
+  <!-- Chart.js and HTMX -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="https://unpkg.com/htmx.org@2.0.2"></script>
+  <style>
+    :root {
+      --bg-page: #f8fafc;
+      --bg-card: #ffffff;
+      --text-main: #0f172a;
+      --text-muted: #64748b;
+      --border-color: #e2e8f0;
+      --primary: #2563eb;
+      --primary-hover: #1d4ed8;
+      --success: #16a34a;
+      --warning: #d97706;
+      --warning-bg: #fffbeb;
+      --danger: #dc2626;
+      --danger-bg: #fef2f2;
+      --info-bg: #eff6ff;
+      --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: var(--font-sans);
+      background-color: var(--bg-page);
+      color: var(--text-main);
+      line-height: 1.5;
+      font-size: 14px;
+    }
+
+    /* Top Global Header */
+    .global-header {
+      background: #ffffff;
+      border-bottom: 2px solid var(--border-color);
+      padding: 12px 24px;
+    }
+    .header-top {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 12px;
+    }
+    .brand-title {
+      font-size: 1.3rem;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+      color: #0f172a;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .badge {
+      display: inline-block;
+      padding: 3px 8px;
+      font-size: 0.75rem;
+      font-weight: 600;
+      border-radius: 4px;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+    .badge-amber {
+      background: #fef3c7;
+      color: #92400e;
+      border: 1px solid #fde68a;
+    }
+    .badge-blue {
+      background: #dbeafe;
+      color: #1e40af;
+      border: 1px solid #bfdbfe;
+    }
+    .badge-green {
+      background: #dcfce7;
+      color: #166534;
+      border: 1px solid #bbf7d0;
+    }
+    .badge-red {
+      background: #fee2e2;
+      color: #991b1b;
+      border: 1px solid #fecaca;
+    }
+
+    .header-metadata {
+      display: flex;
+      gap: 16px;
+      font-size: 0.8rem;
+      color: var(--text-muted);
+      align-items: center;
+    }
+    .meta-item strong { color: var(--text-main); }
+
+    /* Navigation Bar */
+    .nav-bar {
+      background: #ffffff;
+      border-bottom: 1px solid var(--border-color);
+      padding: 0 24px;
+      display: flex;
+      overflow-x: auto;
+      gap: 4px;
+    }
+    .nav-link {
+      display: inline-block;
+      padding: 10px 14px;
+      color: var(--text-muted);
+      text-decoration: none;
+      font-weight: 500;
+      font-size: 0.85rem;
+      border-bottom: 3px solid transparent;
+      white-space: nowrap;
+      transition: color 0.15s, border-color 0.15s;
+    }
+    .nav-link:hover {
+      color: var(--primary);
+    }
+    .nav-link.active {
+      color: var(--primary);
+      border-bottom-color: var(--primary);
+      font-weight: 600;
+    }
+
+    /* Main Container */
+    .main-container {
+      max-width: 1440px;
+      margin: 0 auto;
+      padding: 24px;
+    }
+
+    /* Engineering Notice Box */
+    .engineering-banner {
+      background: var(--warning-bg);
+      border-left: 4px solid var(--warning);
+      padding: 10px 16px;
+      border-radius: 4px;
+      font-size: 0.82rem;
+      color: #92400e;
+      margin-bottom: 20px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    /* KPI Grid */
+    .kpi-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 14px;
+      margin-bottom: 24px;
+    }
+    .kpi-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border-color);
+      border-radius: 6px;
+      padding: 14px 16px;
+    }
+    .kpi-label {
+      font-size: 0.75rem;
+      font-weight: 600;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.03em;
+      margin-bottom: 6px;
+    }
+    .kpi-value {
+      font-size: 1.45rem;
+      font-weight: 700;
+      color: var(--text-main);
+      font-family: var(--font-sans);
+    }
+    .kpi-unit {
+      font-size: 0.85rem;
+      font-weight: 500;
+      color: var(--text-muted);
+      margin-left: 3px;
+    }
+    .kpi-sub {
+      font-size: 0.75rem;
+      color: var(--text-muted);
+      margin-top: 4px;
+    }
+
+    /* Section Cards */
+    .card {
+      background: var(--bg-card);
+      border: 1px solid var(--border-color);
+      border-radius: 6px;
+      padding: 20px;
+      margin-bottom: 24px;
+    }
+    .card-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 16px;
+      border-bottom: 1px solid var(--border-color);
+      padding-bottom: 10px;
+    }
+    .card-title {
+      font-size: 1.05rem;
+      font-weight: 600;
+      color: var(--text-main);
+    }
+
+    /* Layout Grids */
+    .grid-2 {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 20px;
+    }
+    .grid-3 {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      gap: 20px;
+    }
+    @media (max-width: 900px) {
+      .grid-2, .grid-3 { grid-template-columns: 1fr; }
+    }
+
+    /* Tables */
+    .table-container {
+      overflow-x: auto;
+    }
+    table.engineering-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.82rem;
+      text-align: left;
+    }
+    table.engineering-table th {
+      background: #f1f5f9;
+      color: var(--text-muted);
+      font-weight: 600;
+      padding: 9px 12px;
+      border-bottom: 2px solid var(--border-color);
+      white-space: nowrap;
+    }
+    table.engineering-table td {
+      padding: 8px 12px;
+      border-bottom: 1px solid var(--border-color);
+      white-space: nowrap;
+    }
+    table.engineering-table tr:hover td {
+      background: #f8fafc;
+    }
+    .num-col { text-align: right; font-family: var(--font-mono); }
+
+    /* Forms & Controls */
+    .form-group {
+      margin-bottom: 14px;
+    }
+    .form-label {
+      display: block;
+      font-size: 0.8rem;
+      font-weight: 600;
+      color: var(--text-main);
+      margin-bottom: 4px;
+    }
+    .form-control {
+      width: 100%;
+      padding: 7px 10px;
+      border: 1px solid var(--border-color);
+      border-radius: 4px;
+      font-size: 0.85rem;
+      background: #ffffff;
+      color: var(--text-main);
+    }
+    .form-control:focus {
+      outline: none;
+      border-color: var(--primary);
+      box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.15);
+    }
+    .slider-container {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .btn {
+      display: inline-block;
+      padding: 8px 14px;
+      font-size: 0.82rem;
+      font-weight: 600;
+      border-radius: 4px;
+      border: 1px solid transparent;
+      cursor: pointer;
+      text-decoration: none;
+      transition: background 0.15s;
+    }
+    .btn-primary { background: var(--primary); color: #fff; }
+    .btn-primary:hover { background: var(--primary-hover); }
+    .btn-outline { background: #fff; border-color: var(--border-color); color: var(--text-main); }
+    .btn-outline:hover { background: #f8fafc; border-color: #cbd5e1; }
+
+    /* Chart Containers */
+    .chart-box {
+      position: relative;
+      width: 100%;
+      height: 320px;
+    }
+
+    /* Production Data Banner (Phase 5.9) */
+    .production-banner {
+      background: #0f172a;
+      color: #f8fafc;
+      padding: 6px 24px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 0.76rem;
+      font-weight: 600;
+      letter-spacing: 0.03em;
+      border-bottom: 1px solid #334155;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+    .banner-items {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      flex-wrap: wrap;
+    }
+    .banner-tag {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .banner-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      display: inline-block;
+    }
+    .dot-live { background: #22c55e; box-shadow: 0 0 8px #22c55e; }
+    .dot-virtual { background: #3b82f6; }
+    .dot-off { background: #94a3b8; }
+
+    .user-session-info {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .logout-btn {
+      color: #94a3b8;
+      text-decoration: none;
+      font-size: 0.72rem;
+      padding: 2px 8px;
+      border: 1px solid #475569;
+      border-radius: 3px;
+      transition: all 0.15s;
+    }
+    .logout-btn:hover {
+      color: #f8fafc;
+      border-color: #94a3b8;
+      background: #334155;
+    }
+
+    @media (max-width: 640px) {
+      .global-header { padding: 10px 14px; }
+      .main-container { padding: 12px; }
+      .header-top { flex-direction: column; align-items: flex-start; gap: 8px; }
+      .header-metadata { flex-wrap: wrap; gap: 8px; font-size: 0.72rem; }
+      .kpi-grid { grid-template-columns: 1fr; gap: 10px; }
+      .production-banner { padding: 6px 12px; font-size: 0.72rem; }
+      .banner-items { gap: 8px; }
+      .card { padding: 14px; }
+      .nav-bar { padding: 0 10px; }
+      .nav-link { padding: 8px 10px; font-size: 0.8rem; }
+    }
+
+    footer {
+      text-align: center;
+      padding: 24px;
+      color: var(--text-muted);
+      font-size: 0.78rem;
+      border-top: 1px solid var(--border-color);
+      background: #fff;
+      margin-top: 40px;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Top Production Data Banner (Phase 5.9 Requirement 21) -->
+  <div class="production-banner">
+    <div class="banner-items">
+      <div class="banner-tag">
+        <span class="banner-dot dot-live"></span>
+        MARKET DATA: <strong style="color: #4ade80;">LIVE</strong>
+      </div>
+      <div class="banner-tag">
+        <span class="banner-dot dot-virtual"></span>
+        TES: <strong style="color: #60a5fa;">SHADOW / VIRTUAL</strong>
+      </div>
+      <div class="banner-tag">
+        <span class="banner-dot dot-off"></span>
+        PHYSICAL GEN0: <strong style="color: #cbd5e1;">NOT CONNECTED</strong>
+      </div>
+    </div>
+
+    <div class="user-session-info">
+      {% if user %}
+        <span>User: <strong>{{ user.username }}</strong></span>
+        <span class="badge {% if user.is_admin %}badge-green{% else %}badge-blue{% endif %}" style="font-size: 0.7rem; padding: 2px 6px;">
+          {{ user.role }}
+        </span>
+        <a href="/logout" class="logout-btn">Logout</a>
+      {% else %}
+        <span>Digital Twin Cloud</span>
+        <a href="/login" class="logout-btn">Login</a>
+      {% endif %}
+    </div>
+  </div>
+
+  <!-- Global Header -->
+  <header class="global-header">
+    <div class="header-top">
+      <div class="brand-title">
+        <span>{{ app_title }}</span>
+        <span class="badge badge-amber">{{ model_badge }}</span>
+      </div>
+      <div class="header-metadata">
+        <div class="meta-item">Model: <strong>{{ model_version }}</strong></div>
+        <div class="meta-item">Price Source: <strong>{{ price_source }}</strong></div>
+        <div class="meta-item">Status: <span class="badge badge-blue">{{ physical_status }}</span></div>
+        <div class="meta-item">Semantics: <strong>{{ capacity_semantics_version }}</strong></div>
+      </div>
+    </div>
+  </header>
+
+  <!-- Main Navigation -->
+  <nav class="nav-bar">
+    <a href="/dashboard/overview" class="nav-link {% if active_page == 'overview' %}active{% endif %}">Overview</a>
+    <a href="/dashboard/market" class="nav-link {% if active_page == 'market' %}active{% endif %}">Market</a>
+    <a href="/dashboard/physical" class="nav-link {% if active_page == 'physical' %}active{% endif %}">TES Physical Model</a>
+    <a href="/dashboard/hx" class="nav-link {% if active_page == 'hx' %}active{% endif %}">Heat Exchanger</a>
+    <a href="/dashboard/vessel" class="nav-link {% if active_page == 'vessel' %}active{% endif %}">Vessel / Sand Sizing</a>
+    <a href="/dashboard/dispatch" class="nav-link {% if active_page == 'dispatch' %}active{% endif %}">Market &amp; Dispatch</a>
+    <a href="/dashboard/economics" class="nav-link {% if active_page == 'economics' %}active{% endif %}">Economic Comparison</a>
+    <a href="/dashboard/sizing" class="nav-link {% if active_page == 'sizing' %}active{% endif %}">Sizing Matrix</a>
+    <a href="/dashboard/sensitivity" class="nav-link {% if active_page == 'sensitivity' %}active{% endif %}">Sensitivity</a>
+    <a href="/dashboard/assumptions" class="nav-link {% if active_page == 'assumptions' %}active{% endif %}">Assumptions &amp; Data</a>
+    <a href="/dashboard/scenarios" class="nav-link {% if active_page == 'scenarios' %}active{% endif %}">Saved Scenarios</a>
+  </nav>
+
+  <!-- Page Content -->
+  <main class="main-container">
+    {% block content %}{% endblock %}
+  </main>
+
+  <footer>
+    Virtual TES Gen0 Engineering Platform &bull; Phase 5.7 Engineering Dashboard &bull;
+    Calculations strictly powered by backend Python models (ThermalStateMapper, HelicalAirHXModel, LP Optimizer)
+  </footer>
+
+  {% block scripts %}{% endblock %}
+</body>
+</html>

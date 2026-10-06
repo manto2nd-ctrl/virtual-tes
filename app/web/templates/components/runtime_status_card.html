@@ -1,0 +1,77 @@
+<!-- Component: Production Runtime & Worker Health Status (Phase 5.9) -->
+<div class="card" style="margin-bottom: 20px; border-left: 4px solid {% if runtime_status.worker_online %}#16a34a{% else %}#ef4444{% endif %};">
+  <div class="card-header" style="margin-bottom: 12px; padding-bottom: 8px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
+    <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
+      <h3 class="card-title" style="margin: 0; font-size: 1.05rem; display: flex; align-items: center; gap: 6px;">
+        <span>🌐 24/7 PRODUCTION RUNTIME HEALTH</span>
+      </h3>
+      <span class="badge {% if runtime_status.env == 'PRODUCTION' %}badge-green{% else %}badge-blue{% endif %}" style="font-size: 0.75rem;">
+        ENV: {{ runtime_status.env }}
+      </span>
+      <span class="badge {% if runtime_status.worker_online %}badge-green{% else %}badge-red{% endif %}" style="font-size: 0.75rem; font-weight: 700;">
+        WORKER: {{ runtime_status.worker_status }}
+      </span>
+    </div>
+
+    <div style="font-size: 0.75rem; color: var(--text-muted);">
+      Server: <strong style="color: #16a34a;">ONLINE</strong> &bull;
+      Database: <strong style="color: #16a34a;">{{ runtime_status.db_status }}</strong>
+    </div>
+  </div>
+
+  {% if not runtime_status.worker_online %}
+  <div style="background: #fef2f2; border: 1px solid #fecaca; color: #991b1b; padding: 8px 12px; border-radius: 4px; font-size: 0.8rem; margin-bottom: 12px; font-weight: 600;">
+    ⚠ WORKER OFFLINE: Background worker heartbeat is stale (> 3 minutes) or not running. Virtual TES shadow runtime is suspended.
+  </div>
+  {% endif %}
+
+  <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 10px;">
+    <!-- Metric 1: Worker Status & Heartbeat -->
+    <div style="background: #f8fafc; border: 1px solid var(--border-color); border-radius: 4px; padding: 10px;">
+      <div style="font-size: 0.72rem; color: var(--text-muted); font-weight: 600; text-transform: uppercase;">Worker Heartbeat</div>
+      <div style="font-size: 1.05rem; font-weight: 700; color: {% if runtime_status.worker_online %}#166534{% else %}#991b1b{% endif %}; margin: 2px 0;">
+        {% if runtime_status.worker_online %}● RUNNING{% else %}✕ OFFLINE{% endif %}
+      </div>
+      <div style="font-size: 0.72rem; color: var(--text-muted);">
+        {% if runtime_status.heartbeat_age_sec is not none %}
+          Age: {{ runtime_status.heartbeat_age_sec }}s ago
+        {% else %}
+          No heartbeat recorded
+        {% endif %}
+      </div>
+    </div>
+
+    <!-- Metric 2: Market Status & Fetch -->
+    <div style="background: #f8fafc; border: 1px solid var(--border-color); border-radius: 4px; padding: 10px;">
+      <div style="font-size: 0.72rem; color: var(--text-muted); font-weight: 600; text-transform: uppercase;">Market Connection</div>
+      <div style="font-size: 1.05rem; font-weight: 700; color: {% if not market.is_stale %}#166534{% else %}#b45309{% endif %}; margin: 2px 0;">
+        {% if not market.is_stale %}● LIVE ({{ market.market_status.active_source }}){% else %}▲ STALE DATA{% endif %}
+      </div>
+      <div style="font-size: 0.72rem; color: var(--text-muted);">
+        Last fetch: {{ market.last_fetched_local_str }}
+      </div>
+    </div>
+
+    <!-- Metric 3: Shadow Runtime Status -->
+    <div style="background: #f8fafc; border: 1px solid var(--border-color); border-radius: 4px; padding: 10px;">
+      <div style="font-size: 0.72rem; color: var(--text-muted); font-weight: 600; text-transform: uppercase;">Shadow TES Digital Twin</div>
+      <div style="font-size: 1.05rem; font-weight: 700; color: {% if runtime_status.shadow_status == 'RUNNING' %}#2563eb{% elif runtime_status.shadow_status == 'PAUSED' %}#d97706{% else %}#64748b{% endif %}; margin: 2px 0;">
+        {{ runtime_status.shadow_status }}
+      </div>
+      <div style="font-size: 0.72rem; color: var(--text-muted);">
+        Last interval: {{ shadow.latest_interval_time }}
+      </div>
+    </div>
+
+    <!-- Metric 4: Optimization Horizon -->
+    <div style="background: #f8fafc; border: 1px solid var(--border-color); border-radius: 4px; padding: 10px;">
+      <div style="font-size: 0.72rem; color: var(--text-muted); font-weight: 600; text-transform: uppercase;">Receding Horizon</div>
+      <div style="font-size: 1.05rem; font-weight: 700; color: #0f172a; margin: 2px 0;">
+        Active ({{ shadow.schedule_count }} steps)
+      </div>
+      <div style="font-size: 0.72rem; color: var(--text-muted);">
+        Next interval: {{ market.next_interval_str if market and market.next_interval_str else 'Next 15m' }}
+      </div>
+    </div>
+  </div>
+</div>

@@ -1,0 +1,38 @@
+[project]
+name = "virtual-tes"
+version = "0.2.0"
+description = "Virtual Gen0 Energy Management System for a sand-based Thermal Energy Storage (TES) plant"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "sqlalchemy>=2.0",
+    "pydantic>=2.6",
+    "pydantic-settings>=2.2",
+    "tzdata>=2024.1",   # required on Windows for zoneinfo("Europe/Vilnius")
+    "httpx>=0.27.0",
+    "pulp<3.0",
+    "fastapi>=0.142.2",
+    "uvicorn>=0.30",
+    "jinja2>=3.1.6",
+    "python-multipart>=0.0.32",
+    "alembic>=1.20.0",
+    "psycopg[binary]>=3.3.6",
+]
+
+[project.optional-dependencies]
+# Added in later phases (kept here so the roadmap is visible):
+#   phase3: httpx, tenacity ; phase4: pulp or ortools ; phase5: pandas ;
+#   phase6: fastapi, uvicorn, jinja2 ; phase7: apscheduler
+
+[dependency-groups]
+dev = [
+    "playwright>=1.63.0",
+    "pytest>=8.0",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+
+[tool.uv]
+package = false

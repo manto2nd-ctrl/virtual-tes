@@ -1,0 +1,145 @@
+{% extends "base.html" %}
+
+{% block title %}Saved Scenarios - Virtual TES Gen0{% endblock %}
+
+{% block content %}
+<div class="card-header" style="margin-bottom: 20px;">
+  <div>
+    <h2 style="font-size: 1.3rem; font-weight: 700;">Saved Engineering Scenarios &amp; Side-by-Side Comparison</h2>
+    <p style="color: var(--text-muted); font-size: 0.85rem;">
+      Immutable versioned snapshots persisted in SQLite for candidate parameter evaluation (e.g. 275.7 kg vs 300 kg vs 320 kg).
+    </p>
+  </div>
+  <span class="badge badge-blue">APPEND-ONLY PERSISTENCE</span>
+</div>
+
+<!-- Comparison Controls Card -->
+<div class="card">
+  <div class="card-header">
+    <h3 class="card-title">Side-by-Side Scenario Diff Comparison</h3>
+    <span class="badge badge-green">INTERACTIVE DIFF</span>
+  </div>
+  <div class="grid-3" style="align-items: flex-end;">
+    <div class="form-group" style="margin-bottom: 0;">
+      <label class="form-label">Scenario A (Baseline)</label>
+      <select id="select-scen-a" class="form-control">
+        {% for sc in scenarios %}
+        <option value="{{ sc.scenario_id }}">{{ sc.name }} (v{{ sc.version }})</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="form-group" style="margin-bottom: 0;">
+      <label class="form-label">Scenario B (Candidate Variant)</label>
+      <select id="select-scen-b" class="form-control">
+        {% for sc in scenarios %}
+        <option value="{{ sc.scenario_id }}" {% if loop.index == 2 %}selected{% endif %}>{{ sc.name }} (v{{ sc.version }})</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div>
+      <button type="button" class="btn btn-primary" style="width: 100%;" onclick="runComparison()">
+        Compare Scenarios
+      </button>
+    </div>
+  </div>
+
+  <!-- Comparison Results Table -->
+  <div id="diff-results-box" style="margin-top: 20px; display: none;">
+    <div class="table-container">
+      <table class="engineering-table">
+        <thead>
+          <tr>
+            <th>Engineering Parameter</th>
+            <th id="th-scen-a" style="text-align: right;">Scenario A</th>
+            <th id="th-scen-b" style="text-align: right;">Scenario B</th>
+            <th style="text-align: right;">Difference (B - A)</th>
+            <th>Units</th>
+          </tr>
+        </thead>
+        <tbody id="diff-table-body"></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- Saved Scenarios List -->
+<div class="card">
+  <div class="card-header">
+    <h3 class="card-title">All Saved Scenarios in SQLite</h3>
+    <span class="badge badge-blue">{{ scenarios|length }} PRESETS</span>
+  </div>
+  <div class="table-container">
+    <table class="engineering-table">
+      <thead>
+        <tr>
+          <th>Scenario Name</th>
+          <th>Version</th>
+          <th>Created</th>
+          <th>Description</th>
+          <th>Sand Mass</th>
+          <th>Full Cap</th>
+          <th>Disp Cap</th>
+          <th>HX Max Power</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for sc in scenarios %}
+        <tr>
+          <td><strong>{{ sc.name }}</strong></td>
+          <td class="num-col">v{{ sc.version }}</td>
+          <td>{{ sc.created_at }}</td>
+          <td>{{ sc.description or '-' }}</td>
+          <td class="num-col">{{ "%.1f"|format(sc.summary.sand_mass_kg) }} kg</td>
+          <td class="num-col"><strong>{{ "%.2f"|format(sc.summary.thermal_capacity_full_span_kwh) }} kWh</strong></td>
+          <td class="num-col">{{ "%.2f"|format(sc.summary.dispatchable_capacity_kwh) }} kWh</td>
+          <td class="num-col">{{ "%.2f"|format(sc.summary.hx_pmax_at_100_soc_kw) }} kW</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+async function runComparison() {
+  const idA = document.getElementById('select-scen-a').value;
+  const idB = document.getElementById('select-scen-b').value;
+
+  const resp = await fetch('/api/scenarios/compare', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ scenario_id_1: idA, scenario_id_2: idB })
+  });
+  const data = await resp.json();
+
+  document.getElementById('th-scen-a').innerText = data.scenario_a.name;
+  document.getElementById('th-scen-b').innerText = data.scenario_b.name;
+
+  const tbody = document.getElementById('diff-table-body');
+  tbody.innerHTML = '';
+
+  data.comparison_rows.forEach(row => {
+    const tr = document.createElement('tr');
+    const isDifferent = row.diff !== null && Math.abs(row.diff) > 1e-4;
+    const diffColor = isDifferent ? (row.diff > 0 ? '#16a34a' : '#d97706') : '#64748b';
+
+    tr.innerHTML = `
+      <td><strong>${row.label}</strong></td>
+      <td class="num-col">${row.val_a !== null ? row.val_a : 'N/A'}</td>
+      <td class="num-col" style="${isDifferent ? 'font-weight: 600;' : ''}">${row.val_b !== null ? row.val_b : 'N/A'}</td>
+      <td class="num-col" style="color: ${diffColor}; font-weight: 600;">${row.diff_str}</td>
+      <td>${row.unit}</td>
+    `;
+    tbody.appendChild(tr);
+  });
+
+  document.getElementById('diff-results-box').style.display = 'block';
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  runComparison();
+});
+</script>
+{% endblock %}

@@ -1,0 +1,150 @@
+{% extends "base.html" %}
+
+{% block title %}Economic Comparison - Virtual TES Gen0{% endblock %}
+
+{% block content %}
+<div class="card-header" style="margin-bottom: 20px;">
+  <div>
+    <h2 style="font-size: 1.3rem; font-weight: 700;">Economic Strategy Benchmarking</h2>
+    <p style="color: var(--text-muted); font-size: 0.85rem;">
+      Comparative 4-way evaluation across 48h historical simulation horizon.
+    </p>
+  </div>
+  <span class="badge badge-amber">ENGINEERING ESTIMATE ONLY</span>
+</div>
+
+<div class="engineering-banner">
+  <div>
+    <strong>ENGINEERING ESTIMATE CAVEATS:</strong> Synthetic mock price data and provisional heat exchanger U values (9.0 W/m²K) are used for baseline benchmarking. <strong>Results do NOT prove commercial viability or final financial savings prior to physical Gen0 calibration.</strong>
+  </div>
+  <span class="badge badge-amber">SYNTHETIC / MOCK PRICES</span>
+</div>
+
+<!-- Comparison Table Card -->
+<div class="card">
+  <div class="card-header">
+    <h3 class="card-title">Strategy Comparison Matrix</h3>
+    <span class="badge badge-blue">4-WAY BENCHMARK</span>
+  </div>
+  <div class="table-container">
+    <table class="engineering-table">
+      <thead>
+        <tr>
+          <th>Performance / Economic Metric</th>
+          <th style="text-align: right;">Direct Electric</th>
+          <th style="text-align: right;">Cheapest-4h Heuristic</th>
+          <th style="text-align: right;">Optimized (Rolling LP)</th>
+          <th style="text-align: right; background: #eff6ff;">Foresight (Theoretical Bound)</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><strong>Full-Span Physical Capacity</strong></td>
+          <td class="num-col">N/A</td>
+          <td class="num-col">15.00 kWh</td>
+          <td class="num-col">15.00 kWh</td>
+          <td class="num-col" style="background: #f8fafc;">15.00 kWh</td>
+        </tr>
+        <tr>
+          <td><strong>Dispatchable Thermal Capacity</strong></td>
+          <td class="num-col">N/A</td>
+          <td class="num-col">13.50 kWh</td>
+          <td class="num-col">13.50 kWh</td>
+          <td class="num-col" style="background: #f8fafc;">13.50 kWh</td>
+        </tr>
+        <tr>
+          <td><strong>Equivalent Sand Mass</strong></td>
+          <td class="num-col">N/A</td>
+          <td class="num-col">275.7 kg</td>
+          <td class="num-col">275.7 kg</td>
+          <td class="num-col" style="background: #f8fafc;">275.7 kg</td>
+        </tr>
+        <tr>
+          <td>Useful Heat Delivered</td>
+          <td class="num-col">{{ "%.2f"|format(direct.useful_heat_kwh) }} kWh</td>
+          <td class="num-col">{{ "%.2f"|format(cheapest.useful_heat_kwh) }} kWh</td>
+          <td class="num-col">{{ "%.2f"|format(rolling.useful_heat_kwh) }} kWh</td>
+          <td class="num-col" style="background: #f8fafc;">{{ "%.2f"|format(foresight.useful_heat_kwh) }} kWh</td>
+        </tr>
+        <tr>
+          <td>Heat Supply Reliability</td>
+          <td class="num-col"><strong>{{ "%.2f"|format(direct.heat_supply_reliability_percent) }} %</strong></td>
+          <td class="num-col" style="color: var(--warning); font-weight: 600;">{{ "%.2f"|format(cheapest.heat_supply_reliability_percent) }} %</td>
+          <td class="num-col" style="color: var(--success); font-weight: 700;">{{ "%.2f"|format(rolling.heat_supply_reliability_percent) }} %</td>
+          <td class="num-col" style="background: #f8fafc; font-weight: 700;">{{ "%.2f"|format(foresight.heat_supply_reliability_percent) }} %</td>
+        </tr>
+        <tr>
+          <td>Unmet Process Heat</td>
+          <td class="num-col">{{ "%.2f"|format(direct.unmet_heat_kwh) }} kWh</td>
+          <td class="num-col" style="color: var(--danger); font-weight: 600;">{{ "%.2f"|format(cheapest.unmet_heat_kwh) }} kWh</td>
+          <td class="num-col">{{ "%.2f"|format(rolling.unmet_heat_kwh) }} kWh</td>
+          <td class="num-col" style="background: #f8fafc;">{{ "%.2f"|format(foresight.unmet_heat_kwh) }} kWh</td>
+        </tr>
+        <tr>
+          <td>Electricity Consumed</td>
+          <td class="num-col">{{ "%.2f"|format(direct.electricity_kwh) }} kWh</td>
+          <td class="num-col">{{ "%.2f"|format(cheapest.electricity_kwh) }} kWh</td>
+          <td class="num-col">{{ "%.2f"|format(rolling.electricity_kwh) }} kWh</td>
+          <td class="num-col" style="background: #f8fafc;">{{ "%.2f"|format(foresight.electricity_kwh) }} kWh</td>
+        </tr>
+        <tr>
+          <td>Average Paid Electricity Price</td>
+          <td class="num-col">{{ "%.2f"|format(direct.average_paid_electricity_price) }} EUR/MWh</td>
+          <td class="num-col">{{ "%.2f"|format(cheapest.average_paid_electricity_price) }} EUR/MWh</td>
+          <td class="num-col" style="color: var(--primary); font-weight: 600;">{{ "%.2f"|format(rolling.average_paid_electricity_price) }} EUR/MWh</td>
+          <td class="num-col" style="background: #f8fafc;">{{ "%.2f"|format(foresight.average_paid_electricity_price) }} EUR/MWh</td>
+        </tr>
+        <tr>
+          <td><strong>Cost per MWh Useful Heat</strong></td>
+          <td class="num-col"><strong>{{ "%.2f"|format(direct.cost_eur_per_mwh_heat) }} EUR/MWh</strong></td>
+          <td class="num-col">{{ "%.2f"|format(cheapest.cost_eur_per_mwh_heat) }} EUR/MWh</td>
+          <td class="num-col" style="color: var(--success); font-weight: 700;"><strong>{{ "%.2f"|format(rolling.cost_eur_per_mwh_heat) }} EUR/MWh</strong></td>
+          <td class="num-col" style="background: #f8fafc; font-weight: 700;"><strong>{{ "%.2f"|format(foresight.cost_eur_per_mwh_heat) }} EUR/MWh</strong></td>
+        </tr>
+        <tr>
+          <td>Modeled Cost Savings vs Direct</td>
+          <td class="num-col">0.00 EUR (0.0%)</td>
+          <td class="num-col">{{ "%.2f"|format(cheapest.savings_vs_direct_eur) }} EUR ({{ "%.1f"|format(cheapest.savings_vs_direct_percent) }}%)</td>
+          <td class="num-col" style="color: var(--success); font-weight: 600;">{{ "%.2f"|format(rolling.savings_vs_direct_eur) }} EUR ({{ "%.1f"|format(rolling.savings_vs_direct_percent) }}%)</td>
+          <td class="num-col" style="background: #f8fafc;">{{ "%.2f"|format(foresight.savings_vs_direct_eur) }} EUR ({{ "%.1f"|format(foresight.savings_vs_direct_percent) }}%)</td>
+        </tr>
+        <tr>
+          <td>Thermal Standing Losses</td>
+          <td class="num-col">0.00 kWh</td>
+          <td class="num-col">{{ "%.2f"|format(cheapest.thermal_standing_loss_kwh) }} kWh</td>
+          <td class="num-col">{{ "%.2f"|format(rolling.thermal_standing_loss_kwh) }} kWh</td>
+          <td class="num-col" style="background: #f8fafc;">{{ "%.2f"|format(foresight.thermal_standing_loss_kwh) }} kWh</td>
+        </tr>
+        <tr>
+          <td>Conversion Losses (In/Out)</td>
+          <td class="num-col">{{ "%.2f"|format(direct.conversion_loss_kwh) }} kWh</td>
+          <td class="num-col">{{ "%.2f"|format(cheapest.conversion_loss_kwh) }} kWh</td>
+          <td class="num-col">{{ "%.2f"|format(rolling.conversion_loss_kwh) }} kWh</td>
+          <td class="num-col" style="background: #f8fafc;">{{ "%.2f"|format(foresight.conversion_loss_kwh) }} kWh</td>
+        </tr>
+        <tr>
+          <td>Auxiliary Power Energy</td>
+          <td class="num-col">0.00 kWh</td>
+          <td class="num-col">{{ "%.2f"|format(cheapest.tes_auxiliary_kwh) }} kWh</td>
+          <td class="num-col">{{ "%.2f"|format(rolling.tes_auxiliary_kwh) }} kWh</td>
+          <td class="num-col" style="background: #f8fafc;">{{ "%.2f"|format(foresight.tes_auxiliary_kwh) }} kWh</td>
+        </tr>
+        <tr>
+          <td>Equivalent Discharge Cycles</td>
+          <td class="num-col">0.00</td>
+          <td class="num-col">{{ "%.2f"|format(cheapest.equivalent_discharge_cycles) }}</td>
+          <td class="num-col">{{ "%.2f"|format(rolling.equivalent_discharge_cycles) }}</td>
+          <td class="num-col" style="background: #f8fafc;">{{ "%.2f"|format(foresight.equivalent_discharge_cycles) }}</td>
+        </tr>
+        <tr>
+          <td>Average Stored SOC</td>
+          <td class="num-col">N/A</td>
+          <td class="num-col">{{ "%.2f"|format(cheapest.average_soc_kwh) }} kWh ({{ "%.1f"|format(cheapest.average_soc_percent) }}%)</td>
+          <td class="num-col">{{ "%.2f"|format(rolling.average_soc_kwh) }} kWh ({{ "%.1f"|format(rolling.average_soc_percent) }}%)</td>
+          <td class="num-col" style="background: #f8fafc;">{{ "%.2f"|format(foresight.average_soc_kwh) }} kWh ({{ "%.1f"|format(foresight.average_soc_percent) }}%)</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

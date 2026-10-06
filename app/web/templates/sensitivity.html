@@ -1,0 +1,180 @@
+{% extends "base.html" %}
+
+{% block title %}Sensitivity Analysis - Virtual TES Gen0{% endblock %}
+
+{% block content %}
+<div class="card-header" style="margin-bottom: 20px;">
+  <div>
+    <h2 style="font-size: 1.3rem; font-weight: 700;">Physical Sensitivity &amp; Loss Impact Analysis</h2>
+    <p style="color: var(--text-muted); font-size: 0.85rem;">
+      Parametric response across standing losses (1% &rarr; 30%/day), conversion efficiencies, auxiliary load, and process heat demands.
+    </p>
+  </div>
+  <span class="badge badge-amber">ASSUMPTION / SENSITIVITY</span>
+</div>
+
+<div class="engineering-banner">
+  <div>
+    <strong>ASSUMPTION / SENSITIVITY NOTICE:</strong> Standing loss figures (1% to 30%/day) and round-trip efficiency levels represent sensitivity parameter boundaries, <strong>NOT MEASURED GEN0 LOSSES</strong>. True thermal losses must be experimentally calibrated on physical Gen0 hardware.
+  </div>
+  <span class="badge badge-amber">ASSUMPTION / SENSITIVITY</span>
+</div>
+
+<!-- Chart: Standing Loss Impact on Heat Cost -->
+<div class="card">
+  <div class="card-header">
+    <h3 class="card-title">Standing Loss Sensitivity (1% to 30%/day — ASSUMPTION / SENSITIVITY)</h3>
+    <span class="badge badge-amber">LOSS RISK BOUNDARY</span>
+  </div>
+  <div class="chart-box">
+    <canvas id="chartLossSensitivity"></canvas>
+  </div>
+</div>
+
+<!-- Standing Loss Sensitivity Table -->
+<div class="card">
+  <div class="card-header">
+    <h3 class="card-title">Standing Loss Sweep Results (1% to 30%/day — ASSUMPTION / SENSITIVITY)</h3>
+    <span class="badge badge-blue">SWEEP DATA</span>
+  </div>
+  <div class="table-container">
+    <table class="engineering-table">
+      <thead>
+        <tr>
+          <th>Loss Rate (%/day)</th>
+          <th>Total Cost (EUR)</th>
+          <th>Cost/MWh Useful Heat</th>
+          <th>Savings vs Direct (EUR)</th>
+          <th>Savings (%)</th>
+          <th>Thermal Standing Loss</th>
+          <th>Average Stored SOC</th>
+          <th>Reliability</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for r in standing_losses %}
+        <tr style="{% if r.scenario_value == 2.0 %}background: #eff6ff; font-weight: 600;{% endif %}">
+          <td>{{ "%.1f"|format(r.scenario_value) }} %/day {% if r.scenario_value == 2.0 %}<span class="badge badge-blue">REF</span>{% endif %}</td>
+          <td class="num-col">{{ "%.2f"|format(r.total_cost_eur) }} EUR</td>
+          <td class="num-col"><strong>{{ "%.2f"|format(r.cost_eur_per_mwh_heat) }} EUR/MWh</strong></td>
+          <td class="num-col">{{ "%.2f"|format(r.savings_vs_direct_eur) }} EUR</td>
+          <td class="num-col">{{ "%.1f"|format(r.savings_vs_direct_percent) }} %</td>
+          <td class="num-col">{{ "%.2f"|format(r.thermal_standing_loss_kwh) }} kWh</td>
+          <td class="num-col">{{ "%.1f"|format(r.average_soc_kwh) }} kWh ({{ "%.1f"|format(r.average_soc_percent) }}%)</td>
+          <td class="num-col">{{ "%.2f"|format(r.heat_supply_reliability_percent) }} %</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- Conversion Efficiencies & Auxiliary Load Sweeps Grid -->
+<div class="grid-2">
+  <div class="card">
+    <div class="card-header">
+      <h3 class="card-title">Conversion Efficiency Sensitivity</h3>
+      <span class="badge badge-blue">η_chg / η_dis</span>
+    </div>
+    <div class="table-container">
+      <table class="engineering-table">
+        <thead>
+          <tr>
+            <th>Scenario</th>
+            <th>Cost/MWh Heat</th>
+            <th>Savings %</th>
+            <th>Conversion Loss</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for r in conversion_efficiencies %}
+          <tr style="{% if 'Ref' in r.scenario_name %}background: #eff6ff; font-weight: 600;{% endif %}">
+            <td>{{ r.scenario_name }}</td>
+            <td class="num-col"><strong>{{ "%.2f"|format(r.cost_eur_per_mwh_heat) }} EUR/MWh</strong></td>
+            <td class="num-col">{{ "%.1f"|format(r.savings_vs_direct_percent) }} %</td>
+            <td class="num-col">{{ "%.2f"|format(r.conversion_loss_kwh) }} kWh</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-header">
+      <h3 class="card-title">Auxiliary Electrical Load Sensitivity</h3>
+      <span class="badge badge-blue">BLOWER &amp; CONTROLS</span>
+    </div>
+    <div class="table-container">
+      <table class="engineering-table">
+        <thead>
+          <tr>
+            <th>Aux Load</th>
+            <th>Cost/MWh Heat</th>
+            <th>Savings %</th>
+            <th>Aux Electricity</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for r in aux_loads %}
+          <tr style="{% if r.scenario_value == 0.05 %}background: #eff6ff; font-weight: 600;{% endif %}">
+            <td>{{ "%.0f"|format(r.scenario_value * 1000) }} W {% if r.scenario_value == 0.05 %}<span class="badge badge-blue">REF</span>{% endif %}</td>
+            <td class="num-col"><strong>{{ "%.2f"|format(r.cost_eur_per_mwh_heat) }} EUR/MWh</strong></td>
+            <td class="num-col">{{ "%.1f"|format(r.savings_vs_direct_percent) }} %</td>
+            <td class="num-col">{{ "%.2f"|format(r.tes_auxiliary_kwh) }} kWh</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const standingLossData = {{ standing_losses|tojson }};
+
+document.addEventListener('DOMContentLoaded', () => {
+  const lossRates = standingLossData.map(d => d.scenario_value + '%/d');
+  const costs = standingLossData.map(d => d.cost_eur_per_mwh_heat);
+  const savings = standingLossData.map(d => d.savings_vs_direct_percent);
+
+  const ctx = document.getElementById('chartLossSensitivity').getContext('2d');
+  new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels: lossRates,
+      datasets: [
+        {
+          label: 'Cost per MWh Useful Heat [EUR/MWh]',
+          data: costs,
+          borderColor: '#dc2626',
+          borderWidth: 2.5,
+          yAxisID: 'yCost',
+          pointRadius: 4
+        },
+        {
+          label: 'Savings vs Direct Heating [%]',
+          data: savings,
+          borderColor: '#16a34a',
+          borderWidth: 2,
+          yAxisID: 'ySavings',
+          pointRadius: 4
+        }
+      ]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: { legend: { position: 'top' } },
+      scales: {
+        x: { title: { display: true, text: 'Standing Heat Loss Rate [% per day]' } },
+        yCost: { type: 'linear', position: 'left', title: { display: true, text: 'EUR/MWh Heat' } },
+        ySavings: { type: 'linear', position: 'right', title: { display: true, text: 'Savings [%]' }, min: 0, max: 50, grid: { drawOnChartArea: false } }
+      }
+    }
+  });
+});
+</script>
+{% endblock %}

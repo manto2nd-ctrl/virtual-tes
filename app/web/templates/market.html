@@ -1,0 +1,310 @@
+{% extends "base.html" %}
+
+{% block title %}Market &amp; Day-Ahead Prices - Virtual TES Gen0 Dashboard{% endblock %}
+
+{% block content %}
+<div class="engineering-banner">
+  <div>
+    <strong>LIVE LITHUANIAN MARKET DATA SUBSYSTEM (PHASE 5.8.1):</strong> Real Nord Pool day-ahead prices powering virtual TES receding-horizon shadow dispatch. Zero hardware control.
+  </div>
+  <span class="badge badge-green">LIVE DATA INTERFACE</span>
+</div>
+
+<!-- Prominent Current Interval & TES Action Cards (Auto-refreshing via HTMX every 60s) -->
+{% include "components/market_current_card.html" %}
+
+<!-- Provider Hierarchy, Cross-Validation & Provenance Card -->
+<div class="card" style="margin-bottom: 24px; border-left: 4px solid var(--primary, #2563eb);">
+  <div class="card-header">
+    <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
+      <h3 class="card-title" style="margin: 0;">Lithuanian TSO Provider Hierarchy &amp; Source Provenance</h3>
+      <span class="badge {% if market.data_status == 'LIVE DATA' %}badge-green{% elif market.data_status == 'STALE DATA' or market.data_status == 'WAITING FOR TOMORROW PRICES' %}badge-amber{% else %}badge-red{% endif %}">
+        {{ market.data_status }}
+      </span>
+      <span class="badge badge-blue">Active: {{ market.active_source }}</span>
+    </div>
+    <span class="badge {% if market.validation == 'MATCH' %}badge-green{% elif market.validation == 'MISMATCH' %}badge-red{% else %}badge-slate{% endif %}">
+      Validation: {{ market.validation }}
+    </span>
+  </div>
+
+  <div class="kpi-grid" style="grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); margin-bottom: 0;">
+    <div class="kpi-card">
+      <div class="kpi-label">Primary Source</div>
+      <div class="kpi-value" style="font-size: 1.15rem;">{{ market.market_status.primary_source }}</div>
+      <div class="kpi-sub">
+        Health: <strong style="color: {% if market.market_status.primary_health == 'OK' %}#16a34a{% else %}#dc2626{% endif %};">{{ market.market_status.primary_health }}</strong>
+      </div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-label">Secondary / Validation</div>
+      <div class="kpi-value" style="font-size: 1.15rem;">{{ market.market_status.cross_check_source }}</div>
+      <div class="kpi-sub">
+        Health: <strong style="color: {% if market.market_status.cross_check_health == 'OK' %}#16a34a{% else %}#dc2626{% endif %};">{{ market.market_status.cross_check_health }}</strong>
+      </div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-label">Active Provider</div>
+      <div class="kpi-value" style="font-size: 1.15rem; color: var(--primary, #2563eb);">{{ market.active_source }}</div>
+      <div class="kpi-sub">Fallback used: <strong>{{ market.fallback_used }}</strong></div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-label">Settlement Step</div>
+      <div class="kpi-value" style="font-size: 1.15rem;">{{ market.resolution }}</div>
+      <div class="kpi-sub">Original: {{ market.original_resolution }}</div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-label">Tomorrow Prices</div>
+      <div class="kpi-value" style="font-size: 1.15rem; color: {% if market.tomorrow_stats.available %}#16a34a{% else %}#d97706{% endif %};">
+        {{ market.tomorrow_stats.status }}
+      </div>
+      <div class="kpi-sub">{% if market.tomorrow_stats.available %}{{ market.tomorrow_stats.intervals_count }} intervals{% else %}Awaiting auction{% endif %}</div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-label">Cross-Source Check</div>
+      <div class="kpi-value" style="font-size: 1.15rem; color: {% if market.validation == 'MATCH' %}#16a34a{% elif market.validation == 'MISMATCH' %}#dc2626{% else %}#64748b{% endif %};">
+        {{ market.validation }}
+      </div>
+      <div class="kpi-sub">Tol: &le; 0.01 EUR/MWh</div>
+    </div>
+  </div>
+</div>
+
+<!-- Today Real Price Chart (Requirement 7) -->
+<div class="card" style="margin-bottom: 24px;">
+  <div class="card-header">
+    <div>
+      <h3 class="card-title">Today's Real Day-Ahead Price Curve (Lithuanian 15-Minute Intervals)</h3>
+      <div style="font-size: 0.78rem; color: var(--text-muted); margin-top: 2px;">
+        All 96 unaggregated 15-minute settlement intervals in Europe/Vilnius local time. Current interval highlighted.
+      </div>
+    </div>
+    <span class="badge badge-blue">{{ market.today_stats.intervals_count }} Intervals Plotted</span>
+  </div>
+
+  <!-- Today Summary Statistics (Requirement 7) -->
+  <div class="kpi-grid" style="grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); margin-bottom: 16px;">
+    <div class="kpi-card">
+      <div class="kpi-label">Today Minimum</div>
+      <div class="kpi-value" style="color: #16a34a;">
+        {{ "%.2f"|format(market.today_stats.min_price_eur_mwh) }}<span class="kpi-unit">EUR/MWh</span>
+      </div>
+      <div class="kpi-sub">At <strong>{{ market.today_stats.min_price_time_str }}</strong></div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-label">Today Maximum</div>
+      <div class="kpi-value" style="color: #dc2626;">
+        {{ "%.2f"|format(market.today_stats.max_price_eur_mwh) }}<span class="kpi-unit">EUR/MWh</span>
+      </div>
+      <div class="kpi-sub">At <strong>{{ market.today_stats.max_price_time_str }}</strong></div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-label">Today Average</div>
+      <div class="kpi-value">
+        {{ "%.2f"|format(market.today_stats.avg_price_eur_mwh) }}<span class="kpi-unit">EUR/MWh</span>
+      </div>
+      <div class="kpi-sub">24-hour unweighted mean</div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-label">Current Price</div>
+      <div class="kpi-value" style="color: var(--primary, #2563eb);">
+        {{ market.price_eur_mwh_str }}<span class="kpi-unit">EUR/MWh</span>
+      </div>
+      <div class="kpi-sub">Interval <strong>{{ market.interval_str }}</strong></div>
+    </div>
+  </div>
+
+  <div class="chart-box" style="height: 320px;">
+    <canvas id="todayPriceChart"></canvas>
+  </div>
+</div>
+
+<!-- Tomorrow Market Data Card (Requirement 8) -->
+<div class="card" style="margin-bottom: 24px;">
+  <div class="card-header">
+    <div style="display: flex; align-items: center; gap: 10px;">
+      <h3 class="card-title">Tomorrow Market Data (Nord Pool Day-Ahead Auction)</h3>
+      <span class="badge {% if market.tomorrow_stats.available %}badge-green{% else %}badge-amber{% endif %}">
+        {{ market.tomorrow_stats.status }}
+      </span>
+    </div>
+    <span style="font-size: 0.78rem; color: var(--text-muted);">
+      {% if market.tomorrow_stats.available %}Auction Cleared{% else %}Publication ~13:00–14:00 CET{% endif %}
+    </span>
+  </div>
+
+  {% if market.tomorrow_stats.available %}
+  <div class="kpi-grid" style="grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); margin-bottom: 0;">
+    <div class="kpi-card">
+      <div class="kpi-label">Intervals Available</div>
+      <div class="kpi-value">{{ market.tomorrow_stats.intervals_count }}</div>
+      <div class="kpi-sub">Full day 15-minute coverage</div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-label">Tomorrow Minimum</div>
+      <div class="kpi-value" style="color: #16a34a;">
+        {{ "%.2f"|format(market.tomorrow_stats.min_price_eur_mwh) }}<span class="kpi-unit">EUR/MWh</span>
+      </div>
+      <div class="kpi-sub">Lowest cleared interval</div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-label">Tomorrow Maximum</div>
+      <div class="kpi-value" style="color: #dc2626;">
+        {{ "%.2f"|format(market.tomorrow_stats.max_price_eur_mwh) }}<span class="kpi-unit">EUR/MWh</span>
+      </div>
+      <div class="kpi-sub">Peak cleared interval</div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-label">Tomorrow Average</div>
+      <div class="kpi-value">
+        {{ "%.2f"|format(market.tomorrow_stats.avg_price_eur_mwh) }}<span class="kpi-unit">EUR/MWh</span>
+      </div>
+      <div class="kpi-sub">Mean day-ahead spot price</div>
+    </div>
+  </div>
+  {% else %}
+  <div style="padding: 16px; background: #fffbeb; border: 1px dashed #f59e0b; border-radius: 6px; color: #92400e;">
+    <strong>TOMORROW PRICES NOT YET AVAILABLE:</strong> Nord Pool day-ahead auction clears around 13:00–14:00 CET. Tomorrow schedule will be populated once published by TSO. No synthetic or mock data is invented.
+  </div>
+  {% endif %}
+</div>
+
+<!-- Raw Live Data Debug Panel (Requirement 9) -->
+<details class="card" style="margin-bottom: 24px;" open>
+  <summary style="font-size: 0.95rem; font-weight: 700; color: var(--text-main); cursor: pointer; padding: 4px 0;">
+    MARKET DATA DEBUG (Last 8 Normalized Records for Verification)
+  </summary>
+  <div style="margin-top: 14px;">
+    <p style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 12px;">
+      Engineering audit trail: normalized MarketPriceInterval objects stored in SQLite with cryptographic SHA-256 payload hashes.
+    </p>
+    <div class="table-container">
+      <table class="engineering-table">
+        <thead>
+          <tr>
+            <th>Start Local</th>
+            <th>End Local</th>
+            <th>Start UTC</th>
+            <th class="num-col">Price (EUR/MWh)</th>
+            <th>Source</th>
+            <th>Fetched At</th>
+            <th>Original Res.</th>
+            <th>Derived?</th>
+            <th>Source Record ID</th>
+            <th>Payload Hash</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for r in market.debug_records %}
+          <tr>
+            <td style="font-weight: 600; color: var(--primary, #2563eb);">{{ r.start_local }}</td>
+            <td style="font-weight: 600;">{{ r.end_local }}</td>
+            <td style="font-family: var(--font-mono); font-size: 0.75rem;">{{ r.start_utc }}</td>
+            <td class="num-col" style="font-weight: 700;">{{ "%.2f"|format(r.price_eur_mwh) }}</td>
+            <td><span class="badge badge-slate">{{ r.source }}</span></td>
+            <td>{{ r.fetched_at }}</td>
+            <td>{{ r.original_resolution }}</td>
+            <td>
+              <span class="badge {% if r.derived_flag == 'YES' %}badge-amber{% else %}badge-green{% endif %}" style="font-size: 0.68rem;">
+                {{ r.derived_flag }}
+              </span>
+            </td>
+            <td style="font-family: var(--font-mono); font-size: 0.72rem; color: var(--text-muted);">{{ r.source_record_id }}</td>
+            <td style="font-family: var(--font-mono); font-size: 0.72rem; color: var(--text-muted);">{{ r.raw_payload_hash }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</details>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.addEventListener("DOMContentLoaded", function() {
+  const intervals = {{ market.today_stats.intervals | tojson }};
+  const currentIntervalStr = {{ market.interval_str | tojson }};
+
+  if (!intervals || intervals.length === 0) return;
+
+  const labels = intervals.map(iv => iv.start_local);
+  const prices = intervals.map(iv => iv.price_eur_mwh);
+
+  // Identify current interval index for highlighting
+  const currentIdx = intervals.findIndex(iv => `${iv.start_local} -> ${iv.end_local}` === currentIntervalStr);
+
+  const pointRadii = intervals.map((iv, idx) => idx === currentIdx ? 6 : 0);
+  const pointColors = intervals.map((iv, idx) => idx === currentIdx ? '#dc2626' : '#2563eb');
+  const pointBorderColors = intervals.map((iv, idx) => idx === currentIdx ? '#ffffff' : '#2563eb');
+  const pointBorderWidths = intervals.map((iv, idx) => idx === currentIdx ? 2 : 0);
+
+  const ctx = document.getElementById('todayPriceChart').getContext('2d');
+  new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels: labels,
+      datasets: [{
+        label: 'Spot Price (EUR/MWh)',
+        data: prices,
+        borderColor: '#2563eb',
+        backgroundColor: 'rgba(37, 99, 235, 0.08)',
+        fill: true,
+        stepped: 'before',
+        borderWidth: 2,
+        pointRadius: pointRadii,
+        pointHoverRadius: 6,
+        pointBackgroundColor: pointColors,
+        pointBorderColor: pointBorderColors,
+        pointBorderWidth: pointBorderWidths,
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      interaction: {
+        mode: 'index',
+        intersect: false,
+      },
+      plugins: {
+        legend: {
+          display: false,
+        },
+        tooltip: {
+          callbacks: {
+            title: function(items) {
+              const idx = items[0].dataIndex;
+              return `${intervals[idx].start_local} – ${intervals[idx].end_local} (Europe/Vilnius)`;
+            },
+            label: function(item) {
+              return ` Spot Price: ${item.raw.toFixed(2)} EUR/MWh`;
+            }
+          }
+        }
+      },
+      scales: {
+        x: {
+          grid: { display: false },
+          ticks: {
+            maxTicksLimit: 12,
+            font: { size: 11 }
+          }
+        },
+        y: {
+          grid: { color: '#f1f5f9' },
+          title: {
+            display: true,
+            text: 'Price (EUR/MWh)',
+            font: { size: 11, weight: 'bold' }
+          },
+          ticks: {
+            font: { size: 11 }
+          }
+        }
+      }
+    }
+  });
+});
+</script>
+{% endblock %}

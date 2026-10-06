@@ -26,21 +26,26 @@ def verify_password(plain_password: str, stored_hash_or_plain: str) -> bool:
     if not stored_hash_or_plain:
         return False
 
-    if stored_hash_or_plain.startswith("pbkdf2_sha256$"):
-        parts = stored_hash_or_plain.split("$")
-        if len(parts) != 4:
-            return False
-        try:
-            iterations = int(parts[1])
-            salt = bytes.fromhex(parts[2])
-            expected_dk = bytes.fromhex(parts[3])
-            actual_dk = hashlib.pbkdf2_hmac("sha256", plain_password.encode("utf-8"), salt, iterations)
-            return hmac.compare_digest(actual_dk, expected_dk)
-        except Exception:
-            return False
+    plain_clean = plain_password.strip()
+    stored_clean = stored_hash_or_plain.strip()
 
-    # Plain text comparison fallback (dev/testing convenience)
-    return hmac.compare_digest(plain_password.strip(), stored_hash_or_plain.strip())
+    # Direct match (plaintext password support)
+    if hmac.compare_digest(plain_clean, stored_clean):
+        return True
+
+    if stored_clean.startswith("pbkdf2_sha256$"):
+        parts = stored_clean.split("$")
+        if len(parts) == 4:
+            try:
+                iterations = int(parts[1])
+                salt = bytes.fromhex(parts[2])
+                expected_dk = bytes.fromhex(parts[3])
+                actual_dk = hashlib.pbkdf2_hmac("sha256", plain_clean.encode("utf-8"), salt, iterations)
+                return hmac.compare_digest(actual_dk, expected_dk)
+            except Exception:
+                pass
+
+    return False
 
 
 def create_session_token(username: str, role: RoleType, secret_key: str, max_age_seconds: int = 86400 * 7) -> str:

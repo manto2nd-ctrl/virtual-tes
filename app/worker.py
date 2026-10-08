@@ -19,7 +19,7 @@ import time
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import delete, select, text
 from sqlalchemy.orm import Session
 
 from app.config.settings import Settings, get_settings
@@ -65,6 +65,7 @@ class VirtualTESWorker:
         self.last_optimization_utc: datetime | None = None
         self.last_executed_interval_utc: datetime | None = None
         self.market_data_freshness: str = "LIVE"
+        self.last_maintenance_time: float = 0.0
 
     def setup_signal_handlers(self) -> None:
         """Register graceful shutdown handlers for SIGINT and SIGTERM."""
@@ -110,6 +111,9 @@ class VirtualTESWorker:
                 },
             )
             session.add(hb)
+            # Prune stale heartbeats older than 3 days to prevent unbounded growth
+            cutoff = now - timedelta(days=3)
+            session.execute(delete(WorkerHeartbeat).where(WorkerHeartbeat.timestamp_utc < cutoff))
             session.commit()
             self.last_heartbeat_time = time.time()
             logger.debug("Published worker heartbeat: status=%s, leader=%s", status, self.lock.is_leader)
@@ -191,6 +195,9 @@ class VirtualTESWorker:
                         # 3. Heartbeat check (every 60s)
                         if time.time() - self.last_heartbeat_time >= self.heartbeat_interval_sec:
                             self.publish_heartbeat(session, status="RUNNING")
+
+                        # 4. Periodic automated maintenance & compaction (every 24h)
+                        self.run_daily_maintenance(session)
                     else:
                         # Secondary standby instance: wait and publish standby heartbeat
                         if time.time() - self.last_heartbeat_time >= self.heartbeat_interval_sec:
@@ -201,6 +208,30 @@ class VirtualTESWorker:
 
             # Sleep between ticks
             time.sleep(self.tick_sleep_sec)
+
+    def run_daily_maintenance(self, session: Session) -> None:
+        """Run daily housekeeping to keep disk space minimal and prevent Railway volume bloat."""
+        now = time.time()
+        if now - self.last_maintenance_time < 86400.0:  # Run once every 24 hours
+            return
+        self.last_maintenance_time = now
+        try:
+            logger.info("Running automated 24-hour database maintenance & compaction...")
+            cutoff = utcnow() - timedelta(days=3)
+            session.execute(delete(WorkerHeartbeat).where(WorkerHeartbeat.timestamp_utc < cutoff))
+            session.commit()
+
+            if self.engine.dialect.name == "postgresql":
+                with self.engine.connect().execution_options(isolation_level="AUTOCOMMIT") as conn:
+                    conn.execute(text("VACUUM ANALYZE raw_market_data;"))
+                    conn.execute(text("VACUUM ANALYZE worker_heartbeats;"))
+            elif self.engine.dialect.name == "sqlite":
+                with self.engine.connect().execution_options(isolation_level="AUTOCOMMIT") as conn:
+                    conn.execute(text("PRAGMA wal_checkpoint(TRUNCATE);"))
+            logger.info("Daily database maintenance completed successfully.")
+        except Exception as exc:
+            session.rollback()
+            logger.warning("Daily maintenance encountered non-fatal error: %s", exc)
 
         # Clean shutdown
         logger.info("Shutting down worker %s...", self.lock.worker_id)

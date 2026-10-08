@@ -57,17 +57,24 @@ class PriceRepository:
         """Store raw payload (audit) and insert new price points in one transaction."""
         raw_id = None
         if result.raw_payload is not None:
-            raw = RawMarketData(
-                source=result.source, bidding_zone=result.bidding_zone,
-                request_params=result.request_params,
-                period_start_utc=result.period_start_utc, period_end_utc=result.period_end_utc,
-                http_status=result.http_status, content_type=result.raw_content_type,
-                payload=result.raw_payload,
-                payload_sha256=hashlib.sha256(result.raw_payload.encode()).hexdigest(),
-            )
-            self.s.add(raw)
-            self.s.flush()
-            raw_id = raw.id
+            sha = hashlib.sha256(result.raw_payload.encode()).hexdigest()
+            existing_id = self.s.execute(
+                select(RawMarketData.id).where(RawMarketData.payload_sha256 == sha).limit(1)
+            ).scalar_one_or_none()
+            if existing_id is not None:
+                raw_id = existing_id
+            else:
+                raw = RawMarketData(
+                    source=result.source, bidding_zone=result.bidding_zone,
+                    request_params=result.request_params,
+                    period_start_utc=result.period_start_utc, period_end_utc=result.period_end_utc,
+                    http_status=result.http_status, content_type=result.raw_content_type,
+                    payload=result.raw_payload,
+                    payload_sha256=sha,
+                )
+                self.s.add(raw)
+                self.s.flush()
+                raw_id = raw.id
         report = self.insert_prices(result.points, raw_market_data_id=raw_id)
         report.raw_market_data_id = raw_id
         return report

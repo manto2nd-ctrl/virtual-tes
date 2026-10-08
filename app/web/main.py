@@ -19,9 +19,9 @@ from app.services.shadow_runtime import ShadowRuntimeService, get_market_interva
 from app.web.routes.api import api_router
 from app.web.routes.auth import auth_router
 from app.web.routes.dashboard import dashboard_router
-from sqlalchemy import select, text
+from sqlalchemy import delete, select, text
 from fastapi import HTTPException
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 import time
 
 logger = logging.getLogger(__name__)
@@ -55,6 +55,8 @@ def _publish_in_process_heartbeat(session, shadow_svc: ShadowRuntimeService, set
             },
         )
         session.add(hb)
+        cutoff = now - timedelta(days=3)
+        session.execute(delete(WorkerHeartbeat).where(WorkerHeartbeat.timestamp_utc < cutoff))
         session.commit()
     except Exception as exc:
         session.rollback()

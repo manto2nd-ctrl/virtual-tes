@@ -41,13 +41,18 @@
       font-size: 13.5px;
       min-height: 100vh;
       display: flex;
+      flex-direction: column;
+      margin: 0;
+      padding: 0;
     }
 
     /* Layout Structure: Sidebar + Main App */
     .app-layout {
       display: flex;
+      flex-direction: row;
       width: 100%;
-      min-height: 100vh;
+      flex-grow: 1;
+      min-height: 0;
     }
 
     /* Sidebar Navigation */
@@ -462,18 +467,19 @@
 
     /* Production Banner (Phase 5.9) */
     .production-banner {
+      width: 100%;
       background: #0f172a;
       color: #f8fafc;
-      padding: 6px 24px;
+      padding: 7px 24px;
       display: flex;
       justify-content: space-between;
       align-items: center;
       font-size: 0.76rem;
       font-weight: 600;
       letter-spacing: 0.03em;
-      border-bottom: 1px solid #334155;
-      flex-wrap: wrap;
-      gap: 8px;
+      border-bottom: 1px solid #1e293b;
+      flex-shrink: 0;
+      box-sizing: border-box;
     }
     .banner-items {
       display: flex;

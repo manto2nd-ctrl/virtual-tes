@@ -140,6 +140,33 @@ def run_cleanup() -> int:
             session.rollback()
             print(f"  [!] Deduplication error: {exc}")
 
+    # 2b. Purge raw payloads older than 2 days
+    print("\n[2b] Purging raw payloads older than 2 days...")
+    purged_raw = 0
+    with session_factory() as session:
+        try:
+            cutoff_raw = datetime.now(timezone.utc) - timedelta(days=2)
+            old_ids = session.execute(
+                select(RawMarketData.id).where(RawMarketData.fetched_at < cutoff_raw)
+            ).scalars().all()
+            if old_ids:
+                session.execute(
+                    update(DayAheadPrice)
+                    .where(DayAheadPrice.raw_market_data_id.in_(old_ids))
+                    .values(raw_market_data_id=None)
+                )
+                session.execute(
+                    delete(RawMarketData).where(RawMarketData.id.in_(old_ids))
+                )
+                session.commit()
+                purged_raw = len(old_ids)
+                print(f"  -> Purged {purged_raw:,} older raw payload rows (> 2 days old)!")
+            else:
+                print("  -> No raw payloads older than 2 days.")
+        except Exception as p_exc:
+            session.rollback()
+            print(f"  [!] Raw payload purge error: {p_exc}")
+
     # Re-enable immutability trigger for SQLite
     if is_sqlite:
         install_immutability_triggers(engine)

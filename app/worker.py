@@ -19,11 +19,11 @@ import time
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
-from sqlalchemy import delete, select, text
+from sqlalchemy import delete, select, text, update
 from sqlalchemy.orm import Session
 
 from app.config.settings import Settings, get_settings
-from app.database.models import ShadowTESSession, WorkerHeartbeat
+from app.database.models import DayAheadPrice, RawMarketData, ShadowTESSession, WorkerHeartbeat
 from app.database.session import init_db, make_engine, make_session_factory
 from app.services.market_data_service import MarketDataService
 from app.services.shadow_runtime import ShadowRuntimeService, get_market_interval_bounds
@@ -210,15 +210,33 @@ class VirtualTESWorker:
             time.sleep(self.tick_sleep_sec)
 
     def run_daily_maintenance(self, session: Session) -> None:
-        """Run daily housekeeping to keep disk space minimal and prevent Railway volume bloat."""
+        """Run housekeeping to keep disk space minimal and prevent Railway volume bloat."""
         now = time.time()
-        if now - self.last_maintenance_time < 86400.0:  # Run once every 24 hours
+        if now - self.last_maintenance_time < 21600.0:  # Run every 6 hours
             return
         self.last_maintenance_time = now
         try:
-            logger.info("Running automated 24-hour database maintenance & compaction...")
-            cutoff = utcnow() - timedelta(days=3)
-            session.execute(delete(WorkerHeartbeat).where(WorkerHeartbeat.timestamp_utc < cutoff))
+            logger.info("Running automated database maintenance & compaction...")
+            # 1. Prune heartbeats older than 2 days
+            cutoff_hb = utcnow() - timedelta(days=2)
+            session.execute(delete(WorkerHeartbeat).where(WorkerHeartbeat.timestamp_utc < cutoff_hb))
+
+            # 2. Prune raw market payloads older than 3 days (keeps disk usage < 100MB permanently)
+            cutoff_raw = utcnow() - timedelta(days=3)
+            old_raw_ids = session.execute(
+                select(RawMarketData.id).where(RawMarketData.fetched_at < cutoff_raw)
+            ).scalars().all()
+            if old_raw_ids:
+                session.execute(
+                    update(DayAheadPrice)
+                    .where(DayAheadPrice.raw_market_data_id.in_(old_raw_ids))
+                    .values(raw_market_data_id=None)
+                )
+                session.execute(
+                    delete(RawMarketData).where(RawMarketData.id.in_(old_raw_ids))
+                )
+                logger.info("Pruned %d stale raw market payloads older than 3 days.", len(old_raw_ids))
+
             session.commit()
 
             if self.engine.dialect.name == "postgresql":
@@ -228,10 +246,10 @@ class VirtualTESWorker:
             elif self.engine.dialect.name == "sqlite":
                 with self.engine.connect().execution_options(isolation_level="AUTOCOMMIT") as conn:
                     conn.execute(text("PRAGMA wal_checkpoint(TRUNCATE);"))
-            logger.info("Daily database maintenance completed successfully.")
+            logger.info("Periodic database maintenance completed successfully.")
         except Exception as exc:
             session.rollback()
-            logger.warning("Daily maintenance encountered non-fatal error: %s", exc)
+            logger.warning("Database maintenance encountered non-fatal error: %s", exc)
 
         # Clean shutdown
         logger.info("Shutting down worker %s...", self.lock.worker_id)

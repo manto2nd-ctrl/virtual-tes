@@ -54,9 +54,31 @@ class PriceRepository:
         self.tz = tz
 
     def store_fetch(self, result: PriceFetchResult) -> PriceInsertReport:
-        """Store raw payload (audit) and insert new price points in one transaction."""
+        """Store raw payload (audit) and insert new price points in one transaction.
+
+        Disk Space Protection (Phase 5.9 / 5.10):
+        Raw multi-megabyte payloads are ONLY persisted when new or corrected price points
+        are actually being inserted. Redundant recurring polls that contain only known,
+        identical duplicate prices skip raw payload storage to prevent PostgreSQL volume bloat.
+        """
+        # Fast check if this fetch contains any new or updated price points
+        has_new_data = False
+        if result.points:
+            for p in result.points:
+                latest = self.s.execute(
+                    select(DayAheadPrice.id, DayAheadPrice.price_eur_mwh).where(
+                        DayAheadPrice.bidding_zone == p.bidding_zone,
+                        DayAheadPrice.source == p.source,
+                        DayAheadPrice.delivery_start_utc == p.delivery_start_utc,
+                        DayAheadPrice.resolution_minutes == p.resolution_minutes,
+                    ).order_by(DayAheadPrice.version.desc()).limit(1)
+                ).first()
+                if latest is None or abs(latest[1] - p.price_eur_mwh) > PRICE_EQUALITY_TOL:
+                    has_new_data = True
+                    break
+
         raw_id = None
-        if result.raw_payload is not None:
+        if has_new_data and result.raw_payload is not None:
             sha = hashlib.sha256(result.raw_payload.encode()).hexdigest()
             existing_id = self.s.execute(
                 select(RawMarketData.id).where(RawMarketData.payload_sha256 == sha).limit(1)
@@ -65,16 +87,20 @@ class PriceRepository:
                 raw_id = existing_id
             else:
                 raw = RawMarketData(
-                    source=result.source, bidding_zone=result.bidding_zone,
+                    source=result.source,
+                    bidding_zone=result.bidding_zone,
                     request_params=result.request_params,
-                    period_start_utc=result.period_start_utc, period_end_utc=result.period_end_utc,
-                    http_status=result.http_status, content_type=result.raw_content_type,
+                    period_start_utc=result.period_start_utc,
+                    period_end_utc=result.period_end_utc,
+                    http_status=result.http_status,
+                    content_type=result.raw_content_type,
                     payload=result.raw_payload,
                     payload_sha256=sha,
                 )
                 self.s.add(raw)
                 self.s.flush()
                 raw_id = raw.id
+
         report = self.insert_prices(result.points, raw_market_data_id=raw_id)
         report.raw_market_data_id = raw_id
         return report

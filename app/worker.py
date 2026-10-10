@@ -174,6 +174,7 @@ class VirtualTESWorker:
             if self.lock.acquire_or_renew(session):
                 logger.info("Acquired primary worker leader lock.")
                 self.startup_catch_up(session)
+                self.run_daily_maintenance(session)
                 self.publish_heartbeat(session, status="RUNNING")
             else:
                 logger.warning("Primary lock held by another worker instance. Entering STANDBY mode.")

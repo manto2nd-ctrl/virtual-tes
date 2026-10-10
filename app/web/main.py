@@ -91,12 +91,33 @@ async def _shadow_background_worker(session_factory, shadow_svc: ShadowRuntimeSe
         await asyncio.sleep(3.0)
 
 
+def _prune_railway_bloat_on_startup(engine) -> None:
+    """Automatic recovery from PostgreSQL volume exhaustion (Phase 5.9 / 5.10).
+
+    When raw market payloads accumulate to gigabytes, this safely unlinks
+    and truncates raw_market_data to release OS disk space immediately.
+    All parsed day-ahead prices and shadow/ledger records remain fully intact.
+    """
+    try:
+        if engine.dialect.name == "postgresql":
+            with engine.begin() as conn:
+                res = conn.execute(text("SELECT count(*) FROM raw_market_data;")).scalar() or 0
+                if res > 20:
+                    logger.warning("Detected %d accumulated raw market payloads. Purging to reclaim disk space...", res)
+                    conn.execute(text("UPDATE day_ahead_prices SET raw_market_data_id = NULL;"))
+                    conn.execute(text("TRUNCATE TABLE raw_market_data CASCADE;"))
+                    logger.info("Successfully truncated raw_market_data. OS volume space reclaimed.")
+    except Exception as exc:
+        logger.warning("Startup bloat pruning non-fatal error: %s", exc)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Ensure database schema is initialized, scenarios seeded, and optional in-process worker running."""
+    """Ensure database schema is initialized, bloat pruned, scenarios seeded, and optional in-process worker running."""
     settings = get_settings()
     engine = make_engine(settings.database_url)
     init_db(engine)
+    _prune_railway_bloat_on_startup(engine)
     session_factory = make_session_factory(engine)
     with session_factory() as session:
         seed_default_scenarios_if_empty(session)

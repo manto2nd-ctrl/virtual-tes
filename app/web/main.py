@@ -94,21 +94,23 @@ async def _shadow_background_worker(session_factory, shadow_svc: ShadowRuntimeSe
 def _prune_railway_bloat_on_startup(engine) -> None:
     """Automatic recovery from PostgreSQL volume exhaustion (Phase 5.9 / 5.10).
 
-    When raw market payloads accumulate to gigabytes, this safely unlinks
-    and truncates raw_market_data to release OS disk space immediately.
+    When raw market payloads accumulate to gigabytes, this safely drops the FK
+    and truncates raw_market_data to release OS disk space immediately without
+    generating WAL overhead.
     All parsed day-ahead prices and shadow/ledger records remain fully intact.
     """
     try:
         if engine.dialect.name == "postgresql":
-            with engine.begin() as conn:
+            with engine.connect().execution_options(isolation_level="AUTOCOMMIT") as conn:
                 res = conn.execute(text("SELECT count(*) FROM raw_market_data;")).scalar() or 0
-                if res > 20:
-                    logger.warning("Detected %d accumulated raw market payloads. Purging to reclaim disk space...", res)
-                    conn.execute(text("UPDATE day_ahead_prices SET raw_market_data_id = NULL;"))
-                    conn.execute(text("TRUNCATE TABLE raw_market_data CASCADE;"))
+                if res > 10:
+                    logger.warning("Detected %d accumulated raw market payloads. Truncating to reclaim disk space...", res)
+                    conn.execute(text("ALTER TABLE day_ahead_prices DROP CONSTRAINT IF EXISTS day_ahead_prices_raw_market_data_id_fkey;"))
+                    conn.execute(text("TRUNCATE TABLE raw_market_data;"))
+                    conn.execute(text("VACUUM;"))
                     logger.info("Successfully truncated raw_market_data. OS volume space reclaimed.")
     except Exception as exc:
-        logger.warning("Startup bloat pruning non-fatal error: %s", exc)
+        logger.warning("Startup bloat pruning error: %s", exc)
 
 
 @asynccontextmanager

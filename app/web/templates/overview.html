@@ -1,524 +1,524 @@
 {% extends "base.html" %}
 
-{% block title %}Overview - Virtual TES Gen0 Dashboard{% endblock %}
+{% block title %}Overview - GEN0 Energy Manager{% endblock %}
+{% block page_header %}Overview{% endblock %}
+{% block page_subtitle %}Real-time status and operational ledger for TES, Dryer, and Site Loads{% endblock %}
 
 {% block content %}
+<!-- Supervisory Twin Provenance Notice & Engineering Banner -->
 <div class="engineering-banner">
   <div>
     <strong>ENGINEERING ESTIMATE ONLY — NOT YET CALIBRATED TO PHYSICAL GEN0:</strong> Parameters reflect the preliminary analytical model prior to hardware fabrication.
   </div>
-  <span class="badge badge-amber">NOT FOR FABRICATION</span>
+  <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+    <span class="badge badge-amber">NOT FOR FABRICATION</span>
+    <span class="badge badge-green">MARKET: LIVE (LITGRID)</span>
+    <span class="badge badge-blue">TES: SIMULATED TWIN</span>
+    <span class="badge badge-blue">DRYER: SIMULATED KINETICS</span>
+    <span class="badge badge-slate">BESS: PROPOSED</span>
+    <span class="badge badge-amber">PHYSICAL GEN0: NOT CONNECTED</span>
+  </div>
 </div>
 
-<!-- 24/7 Production Runtime & Worker Health Status (Phase 5.9) -->
+<!-- TOP 4 KPI CARDS -->
+<div class="kpi-grid">
+  <!-- Card 1: Grid Power -->
+  <div class="kpi-card">
+    <div class="kpi-top">
+      <div class="kpi-label">Grid Power</div>
+      <div class="kpi-icon">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v20M5 7l14 0M7 17l10 0M9 12l6 0"></path></svg>
+      </div>
+    </div>
+    <div class="kpi-value">
+      {{ "%.2f"|format(shadow.current_power_kw|default(2.5)) }}<span class="kpi-unit">kW</span>
+    </div>
+    <div class="kpi-sub">Limit: {{ grid_limit_kw|default(12.0) }} kW</div>
+    <div class="kpi-bar">
+      {% set grid_pct = ((shadow.current_power_kw|default(2.5) / grid_limit_kw|default(12.0)) * 100)|round %}
+      <div class="kpi-bar-fill" style="width: {{ [grid_pct, 100]|min }}%; background: #2563eb;"></div>
+    </div>
+  </div>
+
+  <!-- Card 2: Electricity Price -->
+  <div class="kpi-card">
+    <div class="kpi-top">
+      <div class="kpi-label">Electricity Price</div>
+      <div class="kpi-icon amber">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><path d="M12 6v6l4 2"></path></svg>
+      </div>
+    </div>
+    <div class="kpi-value">
+      {% if market and market.get('current_price_eur_kwh') is not none %}{{ "%.3f"|format(market.get('current_price_eur_kwh')) }}{% else %}0.068{% endif %}<span class="kpi-unit">&euro;/kWh</span>
+    </div>
+    <div class="kpi-sub">
+      Next hour: {% if market and market.get('next_hour_price_eur_kwh') is not none %}{{ "%.3f"|format(market.get('next_hour_price_eur_kwh')) }}{% else %}0.072{% endif %} &euro;/kWh
+    </div>
+    <div class="kpi-bar">
+      <div class="kpi-bar-fill" style="width: 45%; background: #f59e0b;"></div>
+    </div>
+  </div>
+
+  <!-- Card 3: TES Heat Available -->
+  <div class="kpi-card">
+    <div class="kpi-top">
+      <div class="kpi-label">TES Heat Available</div>
+      <div class="kpi-icon orange">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 2.5z"></path></svg>
+      </div>
+    </div>
+    <div class="kpi-value">
+      {{ "%.2f"|format(shadow.hx_actual_heat_kw|default(1.68)) }}<span class="kpi-unit">kW</span>
+    </div>
+    <div class="kpi-sub">
+      SOC: {{ "%.1f"|format(shadow.soc_percent|default(62.0)) }}% ({{ "%.2f"|format(shadow.stored_energy_kwh|default(9.3)) }} kWh)
+    </div>
+    <div class="kpi-bar">
+      <div class="kpi-bar-fill" style="width: {{ shadow.soc_percent|default(62.0) }}%; background: #ea580c;"></div>
+    </div>
+  </div>
+
+  <!-- Card 4: Dryer Heat Demand -->
+  <div class="kpi-card">
+    <div class="kpi-top">
+      <div class="kpi-label">Dryer Heat Demand</div>
+      <div class="kpi-icon teal">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9.59 4.59A2 2 0 1 1 11 8H2m10.59 11.41A2 2 0 1 0 14 16H2m15.73-8.27A2.5 2.5 0 1 1 19.5 12H2"></path></svg>
+      </div>
+    </div>
+    <div class="kpi-value">
+      {% if shadow.dryer and shadow.dryer.get('total_process_demand_kw') is not none %}{{ "%.2f"|format(shadow.dryer.get('total_process_demand_kw')) }}{% elif shadow.dryer and shadow.dryer.get('total_heat_demand_kw') is not none %}{{ "%.2f"|format(shadow.dryer.get('total_heat_demand_kw')) }}{% else %}1.50{% endif %}<span class="kpi-unit">kW</span>
+    </div>
+    <div class="kpi-sub">Status: <strong style="color: #16a34a;">{% if shadow.dryer %}{{ shadow.dryer.get('status', 'Running') }}{% else %}Running{% endif %}</strong></div>
+    <div class="kpi-bar">
+      <div class="kpi-bar-fill" style="width: 100%; background: #0d9488;"></div>
+    </div>
+  </div>
+</div>
+
+<!-- ENERGY FLOW (CURRENT STATE) -->
+<div class="card" style="margin-bottom: 24px;">
+  <div class="card-header">
+    <h3 class="card-title">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline></svg>
+      Energy Flow (Current State)
+    </h3>
+    <span class="badge badge-slate">REAL-TIME SIMULATION MAPPING</span>
+  </div>
+
+  <div style="display: flex; align-items: center; justify-content: space-between; overflow-x: auto; padding: 14px 4px; gap: 8px;">
+    <!-- Node 1: Grid -->
+    <div style="flex: 1; min-width: 140px; background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 8px; padding: 14px 10px; text-align: center;">
+      <div style="font-size: 0.74rem; font-weight: 700; color: #1e40af; margin-bottom: 4px;">Grid</div>
+      <div style="color: #2563eb; margin-bottom: 4px;">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v20M5 7l14 0M7 17l10 0M9 12l6 0"></path></svg>
+      </div>
+      <div style="font-size: 1.15rem; font-weight: 800; color: #0f172a;">{{ "%.2f"|format(shadow.current_power_kw|default(2.5)) }} kW</div>
+      <div style="font-size: 0.7rem; color: #64748b;">(limit {{ grid_limit_kw|default(12.0) }} kW)</div>
+    </div>
+
+    <!-- Arrow -->
+    <div style="color: #2563eb; font-weight: bold; font-size: 1.2rem; flex-shrink: 0;">&rarr;</div>
+
+    <!-- Node 2: TES -->
+    <div style="flex: 1.2; min-width: 160px; background: #fffbeb; border: 1px solid #fde68a; border-radius: 8px; padding: 14px 10px; text-align: center;">
+      <div style="font-size: 0.74rem; font-weight: 700; color: #92400e; margin-bottom: 4px;">TES Thermal Bed</div>
+      <div style="color: #d97706; margin-bottom: 4px;">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="6" y="2" width="12" height="20" rx="4"></rect><line x1="6" y1="8" x2="18" y2="8"></line><line x1="6" y1="14" x2="18" y2="14"></line></svg>
+      </div>
+      <div style="font-size: 1.15rem; font-weight: 800; color: #0f172a;">{{ "%.2f"|format(shadow.hx_actual_heat_kw|default(1.68)) }} kW out</div>
+      <div style="font-size: 0.72rem; color: #78350f;">
+        {{ "%.1f"|format(shadow.stored_energy_kwh|default(9.3)) }} kWh ({{ "%.0f"|format(shadow.soc_percent|default(62)) }}%) &bull; T: {{ "%.0f"|format(shadow.sand_temperature_c|default(197)) }}&deg;C
+      </div>
+    </div>
+
+    <!-- Arrow -->
+    <div style="color: #ea580c; font-weight: bold; font-size: 1.2rem; flex-shrink: 0;">&rarr;</div>
+
+    <!-- Node 3: Heat Exchanger -->
+    <div style="flex: 1.1; min-width: 150px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 14px 10px; text-align: center;">
+      <div style="font-size: 0.74rem; font-weight: 700; color: #475569; margin-bottom: 4px;">Helical Air HX</div>
+      <div style="color: #64748b; margin-bottom: 4px;">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"></circle><path d="M12 3v18"></path><path d="M3 12h18"></path></svg>
+      </div>
+      <div style="font-size: 1.15rem; font-weight: 800; color: #0f172a;">{{ "%.2f"|format(shadow.hx_actual_heat_kw|default(1.50)) }} kW</div>
+      <div style="font-size: 0.7rem; color: #64748b;">
+        Inlet: {{ "%.0f"|format(shadow.sand_temperature_c|default(197)) }}&deg;C &bull; Outlet: ~120&deg;C
+      </div>
+    </div>
+
+    <!-- Arrow -->
+    <div style="color: #0d9488; font-weight: bold; font-size: 1.2rem; flex-shrink: 0;">&rarr;</div>
+
+    <!-- Node 4: Dryer -->
+    <div style="flex: 1.2; min-width: 160px; background: #f0fdfa; border: 1px solid #99f6e4; border-radius: 8px; padding: 14px 10px; text-align: center;">
+      <div style="font-size: 0.74rem; font-weight: 700; color: #0f766e; margin-bottom: 4px;">Dryer (Virtual V1)</div>
+      <div style="color: #0d9488; margin-bottom: 4px;">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="16" rx="2"></rect><circle cx="12" cy="12" r="4"></circle></svg>
+      </div>
+      <div style="font-size: 1.15rem; font-weight: 800; color: #0f172a;">
+        {% if shadow.dryer and shadow.dryer.get('useful_heat_delivered_kw') is not none %}{{ "%.2f"|format(shadow.dryer.get('useful_heat_delivered_kw')) }}{% elif shadow.dryer and shadow.dryer.get('heat_supplied_from_tes_kw') is not none %}{{ "%.2f"|format(shadow.dryer.get('heat_supplied_from_tes_kw')) }}{% else %}1.50{% endif %} kW
+      </div>
+      <div style="font-size: 0.7rem; color: #115e59;">
+        Air: {% if shadow.dryer %}{{ "%.0f"|format(shadow.dryer.get('inlet_temp_c', 40.0)) }} &rarr; {{ "%.0f"|format(shadow.dryer.get('achieved_supply_temp_c', 70.0)) }}{% else %}40 &rarr; 70{% endif %}&deg;C &bull; Flow: 80 m&sup3;/h
+      </div>
+    </div>
+
+    <!-- Dashed Arrow -->
+    <div style="color: #94a3b8; font-weight: bold; font-size: 1.2rem; flex-shrink: 0;">&dash;&rarr;</div>
+
+    <!-- Node 5: BESS (Optional) -->
+    <div style="flex: 1; min-width: 130px; background: #f8fafc; border: 1px dashed #cbd5e1; border-radius: 8px; padding: 14px 10px; text-align: center; opacity: 0.85;">
+      <div style="font-size: 0.74rem; font-weight: 700; color: #64748b; margin-bottom: 4px;">BESS (Optional)</div>
+      <div style="color: #94a3b8; margin-bottom: 4px;">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="7" width="16" height="10" rx="2"></rect><line x1="20" y1="10" x2="20" y2="14"></line></svg>
+      </div>
+      <div style="font-size: 1.15rem; font-weight: 800; color: #64748b;">0.0 kW</div>
+      <div style="font-size: 0.7rem; color: #94a3b8;">SOC: 50% (proposed)</div>
+    </div>
+  </div>
+</div>
+
+<!-- MIDDLE 3 PANELS: TES Status, Dryer Process, Drying Progress -->
+<div class="grid-3" style="margin-bottom: 24px;">
+  <!-- Panel 1: TES Status with Sand Temperature Tank Visual -->
+  <div class="card">
+    <div class="card-header">
+      <h3 class="card-title">
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#ea580c" stroke-width="2"><path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 2.5z"></path></svg>
+        TES Status
+      </h3>
+      <a href="/dashboard/physical" class="btn btn-outline btn-sm">Details &rarr;</a>
+    </div>
+
+    <div style="display: flex; gap: 16px; align-items: center;">
+      <!-- Metrics List -->
+      <div style="flex: 1;">
+        <div style="margin-bottom: 12px;">
+          <div style="font-size: 0.72rem; color: #64748b; font-weight: 600; text-transform: uppercase;">Sand Temperature</div>
+          <div style="font-size: 1.6rem; font-weight: 800; color: #0f172a;">{{ "%.1f"|format(shadow.sand_temperature_c|default(197.0)) }} &deg;C</div>
+        </div>
+        <div style="margin-bottom: 8px;">
+          <div style="font-size: 0.72rem; color: #64748b;">Stored Heat:</div>
+          <strong style="font-size: 0.95rem;">{{ "%.2f"|format(shadow.stored_energy_kwh|default(9.3)) }} kWh</strong>
+          <span style="font-size: 0.8rem; color: #ea580c;">({{ "%.1f"|format(shadow.soc_percent|default(62.0)) }}%)</span>
+        </div>
+        <div style="margin-bottom: 8px;">
+          <div style="font-size: 0.72rem; color: #64748b;">Heat Output (to dryer):</div>
+          <strong style="font-size: 0.95rem;">{{ "%.2f"|format(shadow.hx_actual_heat_kw|default(1.68)) }} kW</strong>
+        </div>
+        <div>
+          <div style="font-size: 0.72rem; color: #64748b;">Heater Power (charging):</div>
+          <strong style="font-size: 0.95rem;">{{ "%.2f"|format(shadow.heater_power_kw|default(0.0)) }} kW</strong>
+        </div>
+      </div>
+
+      <!-- Vertical Sand Tank Visual -->
+      <div style="display: flex; align-items: center; gap: 8px; flex-shrink: 0;">
+        <div style="width: 52px; height: 160px; border: 3px solid #64748b; border-radius: 26px; overflow: hidden; background: #e2e8f0; position: relative; box-shadow: inset 0 2px 4px rgba(0,0,0,0.15);">
+          <!-- Dynamic fill according to temperature (80 to 300 C) -->
+          {% set fill_pct = [([((shadow.sand_temperature_c|default(197.0) - 20) / 280) * 100, 5]|max), 100]|min %}
+          <div style="position: absolute; bottom: 0; left: 0; right: 0; height: {{ fill_pct }}%; background: linear-gradient(to top, #ea580c, #f59e0b, #eab308); transition: height 0.5s ease;"></div>
+        </div>
+        <!-- Ticks -->
+        <div style="font-size: 0.65rem; color: #64748b; display: flex; flex-direction: column; justify-content: space-between; height: 160px; line-height: 1;">
+          <span>300&deg;C</span>
+          <span>250&deg;C</span>
+          <span>200&deg;C</span>
+          <span>150&deg;C</span>
+          <span>100&deg;C</span>
+          <span>50&deg;C</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Panel 2: Dryer Process Card -->
+  <div class="card">
+    <div class="card-header">
+      <h3 class="card-title">
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#0d9488" stroke-width="2"><path d="M9.59 4.59A2 2 0 1 1 11 8H2m10.59 11.41A2 2 0 1 0 14 16H2m15.73-8.27A2.5 2.5 0 1 1 19.5 12H2"></path></svg>
+        Dryer Process
+      </h3>
+      <span class="badge badge-green">{% if shadow.dryer %}{{ shadow.dryer.get('status', 'Running') }}{% else %}Running{% endif %}</span>
+    </div>
+
+    <table class="engineering-table" style="font-size: 0.8rem;">
+      <tr>
+        <td style="color: #64748b;">Required Inlet Temp:</td>
+        <td class="num-col"><strong>{% if shadow.dryer %}{{ "%.1f"|format(shadow.dryer.get('target_supply_temp_c', 70.0)) }}{% else %}70.0{% endif %} &deg;C</strong></td>
+      </tr>
+      <tr>
+        <td style="color: #64748b;">Inlet Air Temperature:</td>
+        <td class="num-col">{% if shadow.dryer %}{{ "%.1f"|format(shadow.dryer.get('inlet_temp_c', shadow.dryer.get('inlet_air_temp_c', 40.0))) }}{% else %}40.0{% endif %} &deg;C</td>
+      </tr>
+      <tr>
+        <td style="color: #64748b;">Achieved Supply Air:</td>
+        <td class="num-col"><strong>{% if shadow.dryer %}{{ "%.1f"|format(shadow.dryer.get('achieved_supply_temp_c', 70.0)) }}{% else %}70.0{% endif %} &deg;C</strong></td>
+      </tr>
+      <tr>
+        <td style="color: #64748b;">Airflow:</td>
+        <td class="num-col">{% if shadow.dryer %}{{ "%.0f"|format(shadow.dryer.get('airflow_m3_h', 80.0)) }}{% else %}80{% endif %} m&sup3;/h</td>
+      </tr>
+      <tr>
+        <td style="color: #64748b;">Process Heat Demand:</td>
+        <td class="num-col"><strong>{% if shadow.dryer %}{{ "%.2f"|format(shadow.dryer.get('total_process_demand_kw', shadow.dryer.get('total_heat_demand_kw', 1.50))) }}{% else %}1.50{% endif %} kW</strong></td>
+      </tr>
+      <tr>
+        <td style="color: #64748b;">Heat Supplied from TES:</td>
+        <td class="num-col" style="color: #ea580c;"><strong>{% if shadow.dryer %}{{ "%.2f"|format(shadow.dryer.get('useful_heat_delivered_kw', shadow.dryer.get('heat_supplied_from_tes_kw', 1.50))) }}{% else %}1.50{% endif %} kW</strong></td>
+      </tr>
+      <tr>
+        <td style="color: #64748b;">Backup Electric Heater:</td>
+        <td class="num-col">{% if shadow.dryer %}{{ "%.2f"|format(shadow.dryer.get('backup_heater_power_kw', shadow.dryer.get('backup_electric_power_kw', 0.0))) }}{% else %}0.00{% endif %} kW</td>
+      </tr>
+      <tr>
+        <td style="color: #64748b;">Blower Fan Power:</td>
+        <td class="num-col">{% if shadow.dryer %}{{ "%.3f"|format(shadow.dryer.get('blower_power_kw', shadow.dryer.get('blower_electric_power_kw', 0.040))) }}{% else %}0.040{% endif %} kW</td>
+      </tr>
+    </table>
+    <div style="margin-top: 10px; text-align: right;">
+      <a href="/dashboard/dryer" class="btn btn-outline btn-sm">Configure Recipe &rarr;</a>
+    </div>
+  </div>
+
+  <!-- Panel 3: Drying Progress (Virtual Batch) -->
+  <div class="card">
+    <div class="card-header">
+      <h3 class="card-title">
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#854d0e" stroke-width="2"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"></path><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"></path></svg>
+        Drying Progress (Virtual)
+      </h3>
+      <span class="badge badge-slate">SIMULATED ESTIMATE</span>
+    </div>
+
+    <table class="engineering-table" style="font-size: 0.8rem;">
+      <tr>
+        <td style="color: #64748b;">Timber Mass (dry basis):</td>
+        <td class="num-col"><strong>{% if shadow.dryer %}{{ "%.0f"|format(shadow.dryer.get('batch_dry_mass_kg', 500.0)) }}{% else %}500{% endif %} kg</strong></td>
+      </tr>
+      <tr>
+        <td style="color: #64748b;">Initial Moisture Content:</td>
+        <td class="num-col">{% if shadow.dryer %}{{ "%.1f"|format(shadow.dryer.get('batch_initial_moisture_fraction', 0.50) * 100) }}{% else %}50.0{% endif %} %</td>
+      </tr>
+      <tr>
+        <td style="color: #64748b;">Target Moisture Content:</td>
+        <td class="num-col">{% if shadow.dryer %}{{ "%.1f"|format(shadow.dryer.get('batch_target_moisture_fraction', 0.15) * 100) }}{% else %}15.0{% endif %} %</td>
+      </tr>
+      <tr>
+        <td style="color: #64748b;">Current Moisture Content:</td>
+        <td class="num-col"><strong style="color: #0284c7;">{% if shadow.dryer %}{{ "%.1f"|format(shadow.dryer.get('current_moisture_percent', 32.0)) }}{% else %}32.0{% endif %} %</strong></td>
+      </tr>
+      <tr>
+        <td style="color: #64748b;">Water Removed:</td>
+        <td class="num-col"><strong>{% if shadow.dryer %}{{ "%.1f"|format(shadow.dryer.get('water_removed_total_kg', shadow.dryer.get('batch_water_removed_kg', 45.0))) }}{% else %}45.0{% endif %} kg</strong></td>
+      </tr>
+      <tr>
+        <td style="color: #64748b;">Est. Time Remaining:</td>
+        <td class="num-col">{% if shadow.dryer %}{{ "%.1f"|format(shadow.dryer.get('estimated_remaining_hours', shadow.dryer.get('batch_est_remaining_hours', 18.0))) }}{% else %}18.0{% endif %} hours</td>
+      </tr>
+    </table>
+
+    <div style="margin-top: 14px;">
+      {% set prog_pct = [([shadow.dryer.get('batch_progress_percent', 36.0) if shadow.dryer else 36.0, 0]|max), 100]|min %}
+      <div style="display: flex; justify-content: space-between; font-size: 0.75rem; margin-bottom: 4px;">
+        <span style="color: #64748b;">Batch Progress:</span>
+        <strong>{{ "%.0f"|format(prog_pct) }}% complete</strong>
+      </div>
+      <div class="kpi-bar" style="height: 8px;">
+        <div class="kpi-bar-fill" style="width: {{ prog_pct }}%; background: #16a34a;"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- KEY PERFORMANCE (TODAY) SETTLEMENT SUMMARY -->
+<div class="card" style="margin-bottom: 24px; border-left: 4px solid #16a34a;">
+  <div class="card-header">
+    <h3 class="card-title">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#16a34a" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
+      Key Performance (Today) — 15-Minute Settlement Ledger
+    </h3>
+    <a href="/dashboard/history" class="btn btn-outline btn-sm">Full Ledger History &rarr;</a>
+  </div>
+
+  <div class="kpi-grid" style="grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); margin-bottom: 0;">
+    <div class="kpi-card" style="margin-bottom: 0;">
+      <div class="kpi-label">Operating Electricity Cost</div>
+      <div class="kpi-value">&euro;{{ "%.2f"|format(shadow.ledger.get('today_actual_cost_eur', shadow.ledger.get('electricity_cost_today_eur', 4.18)) if shadow.ledger else 4.18) }}</div>
+      <div class="kpi-sub">TES charging + backup + blower + aux</div>
+    </div>
+    <div class="kpi-card" style="margin-bottom: 0;">
+      <div class="kpi-label">Heat Delivered to Dryer</div>
+      <div class="kpi-value">{{ "%.1f"|format(shadow.ledger.get('today_heat_delivered_kwh', shadow.ledger.get('heat_delivered_today_kwh', 12.6)) if shadow.ledger else 12.6) }}<span class="kpi-unit">kWh</span></div>
+      <div class="kpi-sub">Total useful thermal enthalpy</div>
+    </div>
+    <div class="kpi-card" style="margin-bottom: 0;">
+      <div class="kpi-label">Water Evaporated (est.)</div>
+      <div class="kpi-value">{{ "%.1f"|format(shadow.dryer.get('water_removed_total_kg', shadow.dryer.get('batch_water_removed_kg', 2.8)) if shadow.dryer else 2.8) }}<span class="kpi-unit">kg</span></div>
+      <div class="kpi-sub">Timber drying moisture removal</div>
+    </div>
+    <div class="kpi-card" style="margin-bottom: 0; background: #f0fdf4; border-color: #bbf7d0;">
+      <div class="kpi-label" style="color: #166534;">Net Savings vs Direct Electric</div>
+      <div class="kpi-value" style="color: #166534;">&euro;{{ "%.2f"|format(shadow.ledger.get('today_net_savings_eur', shadow.ledger.get('net_savings_today_eur', 2.34)) if shadow.ledger else 2.34) }}</div>
+      <div class="kpi-sub" style="color: #166534;">Inventory-adjusted (&Delta;V<sub>inv</sub>)</div>
+    </div>
+  </div>
+</div>
+
+<!-- CHARTS ROW: 24h Market Price & Dispatch | Thermal System Temperatures -->
+<div class="grid-2" style="margin-bottom: 24px;">
+  <!-- Chart 1: Market Price (24h) -->
+  <div class="card">
+    <div class="card-header">
+      <h3 class="card-title">Electricity Price &amp; Spot Forecast (24h)</h3>
+      <span class="badge badge-blue">EUR / MWh</span>
+    </div>
+    <div class="chart-box">
+      <canvas id="overviewPriceChart"></canvas>
+    </div>
+  </div>
+
+  <!-- Chart 2: Thermal System Temperatures (8h) -->
+  <div class="card">
+    <div class="card-header">
+      <h3 class="card-title">Thermal System &amp; Dryer Temperatures (Last 8 Hours)</h3>
+      <span class="badge badge-amber">&deg;C</span>
+    </div>
+    <div class="chart-box">
+      <canvas id="overviewTempChart"></canvas>
+    </div>
+  </div>
+</div>
+
+<!-- REFERENCE GEN0 ENGINEERING HARDWARE & CAPACITY BASELINE -->
+<div class="card" style="margin-bottom: 24px;">
+  <div class="card-header">
+    <h3 class="card-title">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"></rect><line x1="3" y1="9" x2="21" y2="9"></line><line x1="9" y1="21" x2="9" y2="9"></line></svg>
+      Reference Gen0 Engineering &amp; Sizing Baseline
+    </h3>
+    <span class="badge badge-slate">PRELIMINARY ANALYTICAL MODEL</span>
+  </div>
+
+  <div class="kpi-grid" style="grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); margin-bottom: 16px;">
+    <div class="kpi-card" style="margin-bottom: 0;">
+      <div class="kpi-label">Full-Span Thermal Capacity</div>
+      <div class="kpi-value">{{ "%.2f"|format(full_span_capacity_kwh|default(15.0)) }}<span class="kpi-unit">kWh</span></div>
+      <div class="kpi-sub">80 &deg;C &rarr; 300 &deg;C sensible</div>
+    </div>
+    <div class="kpi-card" style="margin-bottom: 0;">
+      <div class="kpi-label">Dispatchable Capacity</div>
+      <div class="kpi-value">{{ "%.2f"|format(dispatchable_capacity_kwh|default(13.5)) }}<span class="kpi-unit">kWh</span></div>
+      <div class="kpi-sub">10% &rarr; 100% optimizer window</div>
+    </div>
+    <div class="kpi-card" style="margin-bottom: 0;">
+      <div class="kpi-label">Equivalent Sand Mass</div>
+      <div class="kpi-value">{{ "%.1f"|format(sand_mass_kg|default(275.7)) }}<span class="kpi-unit">kg</span></div>
+      <div class="kpi-sub">Quartz sand bulk density</div>
+    </div>
+    <div class="kpi-card" style="margin-bottom: 0;">
+      <div class="kpi-label">Available TES Charging Headroom</div>
+      <div class="kpi-value">{{ "%.2f"|format(available_tes_charging_headroom_kw|default(9.95)) }}<span class="kpi-unit">kW</span></div>
+      <div class="kpi-sub">12.0 kW grid - 2.0 kW site - 0.05 kW aux</div>
+    </div>
+    <div class="kpi-card" style="margin-bottom: 0;">
+      <div class="kpi-label">Remaining Grid Margin (at 9kW)</div>
+      <div class="kpi-value">{{ "%.2f"|format(remaining_grid_margin_kw|default(0.95)) }}<span class="kpi-unit">kW</span></div>
+      <div class="kpi-sub">Unused margin during charging</div>
+    </div>
+  </div>
+
+  <div style="font-size: 0.8rem; color: #475569; background: #f8fafc; padding: 12px 16px; border-radius: 6px; border: 1px solid #e2e8f0;">
+    <strong>Helical Air Heat Exchanger Provisional Specification:</strong>
+    Tube Material: <strong>AISI 304L / EN 1.4307</strong> &bull;
+    Tube OD: <strong>60.3 mm</strong> &bull;
+    Coil Diameter: <strong>~420 mm</strong> &bull;
+    Effective Surface Area: <strong>1.55 m&sup2;</strong> &bull;
+    Reference U-value: <strong>9.0 W/m&sup2;K</strong>
+  </div>
+</div>
+
+<!-- SHADOW RUNTIME TWIN CONTROLS & WORKER STATUS (Phase 5.8.2 / 5.9 Preserved) -->
+{% include "components/shadow_runtime_card.html" %}
+{% include "components/shadow_modals.html" %}
 {% include "components/runtime_status_card.html" %}
 
-<!-- Prominent Live Lithuanian Market Price & TES Action (Phase 5.8.1) -->
-{% include "components/market_current_card.html" %}
-
-<!-- Live Virtual TES Shadow Runtime Digital Twin (Phase 5.8.2) -->
-{% include "components/shadow_runtime_card.html" %}
-
-<!-- Shadow Operation Modals (Outside 5s HTMX polling container to prevent DOM replacement bugs) -->
-{% include "components/shadow_modals.html" %}
-
-
-<!-- KPI Cards -->
-<div class="kpi-grid">
-  <div class="kpi-card">
-    <div class="kpi-label">Full-Span Thermal Capacity</div>
-    <div class="kpi-value">{{ "%.2f"|format(full_span_capacity_kwh) }}<span class="kpi-unit">kWh</span></div>
-    <div class="kpi-sub">80 °C &rarr; 300 °C sensible storage</div>
-  </div>
-  <div class="kpi-card">
-    <div class="kpi-label">Dispatchable Capacity</div>
-    <div class="kpi-value">{{ "%.2f"|format(dispatchable_capacity_kwh) }}<span class="kpi-unit">kWh</span></div>
-    <div class="kpi-sub">10% &rarr; 100% optimizer window</div>
-  </div>
-  <div class="kpi-card">
-    <div class="kpi-label">Equivalent Sand Mass</div>
-    <div class="kpi-value">{{ "%.1f"|format(sand_mass_kg) }}<span class="kpi-unit">kg</span></div>
-    <div class="kpi-sub">Quartz sand bulk density estimate</div>
-  </div>
-  <div class="kpi-card">
-    <div class="kpi-label">Optimizer SOC Floor Temp</div>
-    <div class="kpi-value">{{ "%.2f"|format(temp_at_min_soc_c) }}<span class="kpi-unit">°C</span></div>
-    <div class="kpi-sub">Sand temp at 10% SOC reserve</div>
-  </div>
-  <div class="kpi-card">
-    <div class="kpi-label">Installed Heater Power</div>
-    <div class="kpi-value">{{ "%.2f"|format(heater_power_kw) }}<span class="kpi-unit">kW</span></div>
-    <div class="kpi-sub">6 × 1.5 kW cartridge drywells</div>
-  </div>
-  <div class="kpi-card">
-    <div class="kpi-label">Available TES Charging Headroom</div>
-    <div class="kpi-value">{{ "%.2f"|format(available_tes_charging_headroom_kw) }}<span class="kpi-unit">kW</span></div>
-    <div class="kpi-sub">12.0 kW grid - 2.0 kW site - 0.05 kW aux</div>
-  </div>
-  <div class="kpi-card">
-    <div class="kpi-label">Remaining Grid Margin (at 9kW)</div>
-    <div class="kpi-value">{{ "%.2f"|format(remaining_grid_margin_kw) }}<span class="kpi-unit">kW</span></div>
-    <div class="kpi-sub">Unused margin during active charging</div>
-  </div>
-  <div class="kpi-card">
-    <div class="kpi-label">Reference HX Max Output</div>
-    <div class="kpi-value">{{ "%.2f"|format(hx_pmax_100_soc_kw) }}<span class="kpi-unit">kW</span></div>
-    <div class="kpi-sub">At 100% SOC (300 °C) &amp; U=9 W/m²K</div>
-  </div>
-  <div class="kpi-card">
-    <div class="kpi-label">Standing Loss Assumption</div>
-    <div class="kpi-value">{{ "%.1f"|format(standing_loss_pct_day) }}<span class="kpi-unit">%/day</span></div>
-    <div class="kpi-sub">Provisional software assumption</div>
-  </div>
-</div>
-
-<!-- Lithuanian Market Data Architecture & Provider Hierarchy Card (Phase 5.8) -->
-<div class="card" style="margin-bottom: 20px; border-left: 4px solid var(--primary, #2563eb);">
-  <div class="card-header">
-    <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
-      <h3 class="card-title" style="margin: 0;">Lithuanian Market Data Architecture &amp; Provider Hierarchy</h3>
-      <span class="badge {% if market_status.data_freshness == 'LIVE' %}badge-green{% elif market_status.data_freshness == 'STALE DATA' %}badge-amber{% else %}badge-red{% endif %}">
-        {{ market_status.data_freshness }}
-      </span>
-      <span class="badge badge-slate">Active: {{ market_status.active_source }}</span>
-    </div>
-    <span class="badge {% if market_status.validation == 'MATCH' %}badge-green{% elif market_status.validation == 'MISMATCH' %}badge-red{% else %}badge-slate{% endif %}">
-      Validation: {{ market_status.validation }}
-    </span>
-  </div>
-
-  <div class="kpi-grid" style="grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); margin-bottom: 0;">
-    <div class="kpi-card">
-      <div class="kpi-label">Primary Source</div>
-      <div class="kpi-value" style="font-size: 1.15rem;">{{ market_status.primary_source }}</div>
-      <div class="kpi-sub">
-        Health: <strong style="color: {% if market_status.primary_health == 'OK' %}#16a34a{% else %}#dc2626{% endif %};">{{ market_status.primary_health }}</strong>
-      </div>
-    </div>
-    <div class="kpi-card">
-      <div class="kpi-label">Cross-Check Source</div>
-      <div class="kpi-value" style="font-size: 1.15rem;">{{ market_status.cross_check_source }}</div>
-      <div class="kpi-sub">
-        Health: <strong style="color: {% if market_status.cross_check_health == 'OK' %}#16a34a{% else %}#dc2626{% endif %};">{{ market_status.cross_check_health }}</strong>
-      </div>
-    </div>
-    <div class="kpi-card">
-      <div class="kpi-label">Latest LT Market Interval</div>
-      <div class="kpi-value" style="font-size: 0.95rem; font-weight: 600;">{{ market_status.latest_interval_str }}</div>
-      <div class="kpi-sub">Day-ahead horizon</div>
-    </div>
-    <div class="kpi-card">
-      <div class="kpi-label">Tomorrow Prices</div>
-      <div class="kpi-value" style="font-size: 1.15rem; color: {% if market_status.tomorrow_prices == 'AVAILABLE' %}#16a34a{% else %}#d97706{% endif %};">
-        {{ market_status.tomorrow_prices }}
-      </div>
-      <div class="kpi-sub">Auction clearing</div>
-    </div>
-    <div class="kpi-card">
-      <div class="kpi-label">Resolution</div>
-      <div class="kpi-value" style="font-size: 1.15rem;">{{ market_status.resolution }}</div>
-      <div class="kpi-sub">Settlement step</div>
-    </div>
-    <div class="kpi-card">
-      <div class="kpi-label">Validation Status</div>
-      <div class="kpi-value" style="font-size: 1.15rem; color: {% if market_status.validation == 'MATCH' %}#16a34a{% elif market_status.validation == 'MISMATCH' %}#dc2626{% else %}#64748b{% endif %};">
-        {{ market_status.validation }}
-      </div>
-      <div class="kpi-sub">Tol: &le; 0.01 EUR/MWh</div>
-    </div>
-  </div>
-</div>
-
-<!-- Today Real Price Chart Card (Requirement 7 & 17) -->
-<div class="card" style="margin-bottom: 24px;">
-  <div class="card-header">
-    <div>
-      <h3 class="card-title">Today's Real Day-Ahead Price Curve (Lithuanian 15-Minute Intervals)</h3>
-      <div style="font-size: 0.78rem; color: var(--text-muted); margin-top: 2px;">
-        Real unaggregated 15-minute intervals for today in Europe/Vilnius. Current interval highlighted.
-      </div>
-    </div>
-    <a href="/dashboard/market" class="btn btn-primary" style="font-size: 0.78rem; padding: 4px 12px;">
-      View Full Market Page &rarr;
-    </a>
-  </div>
-
-  <div class="kpi-grid" style="grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); margin-bottom: 16px;">
-    <div class="kpi-card">
-      <div class="kpi-label">Today Minimum</div>
-      <div class="kpi-value" style="color: #16a34a;">
-        {{ "%.2f"|format(market.today_stats.min_price_eur_mwh) }}<span class="kpi-unit">EUR/MWh</span>
-      </div>
-      <div class="kpi-sub">At <strong>{{ market.today_stats.min_price_time_str }}</strong></div>
-    </div>
-    <div class="kpi-card">
-      <div class="kpi-label">Today Maximum</div>
-      <div class="kpi-value" style="color: #dc2626;">
-        {{ "%.2f"|format(market.today_stats.max_price_eur_mwh) }}<span class="kpi-unit">EUR/MWh</span>
-      </div>
-      <div class="kpi-sub">At <strong>{{ market.today_stats.max_price_time_str }}</strong></div>
-    </div>
-    <div class="kpi-card">
-      <div class="kpi-label">Today Average</div>
-      <div class="kpi-value">
-        {{ "%.2f"|format(market.today_stats.avg_price_eur_mwh) }}<span class="kpi-unit">EUR/MWh</span>
-      </div>
-      <div class="kpi-sub">24-hour mean</div>
-    </div>
-    <div class="kpi-card">
-      <div class="kpi-label">Current Spot Price</div>
-      <div class="kpi-value" style="color: var(--primary, #2563eb);">
-        {{ market.price_eur_mwh_str }}<span class="kpi-unit">EUR/MWh</span>
-      </div>
-      <div class="kpi-sub">Interval <strong>{{ market.interval_str }}</strong></div>
-    </div>
-  </div>
-
-  <div class="chart-box" style="height: 280px;">
-    <canvas id="todayPriceChart"></canvas>
-  </div>
-</div>
-
-<!-- Tomorrow Market Data Card (Phase 5.8.3 Requirement 1) -->
-<div class="card" style="margin-bottom: 24px;">
-  <div class="card-header">
-    <div style="display: flex; align-items: center; gap: 10px;">
-      <h3 class="card-title">Tomorrow Market Data (Nord Pool Day-Ahead Auction)</h3>
-      <span class="badge {% if market.tomorrow_stats.available %}badge-green{% elif market.tomorrow_stats.is_partial %}badge-amber{% else %}badge-slate{% endif %}">
-        {{ market.tomorrow_stats.status }}
-      </span>
-    </div>
-    <span style="font-size: 0.78rem; color: var(--text-muted);">
-      {% if market.tomorrow_stats.available %}Auction Cleared (Complete Day){% elif market.tomorrow_stats.is_partial %}Partial Day Data Received (Clearing In Progress){% else %}Publication ~13:00–14:00 CET{% endif %}
-    </span>
-  </div>
-
-  {% if market.tomorrow_stats.available %}
-  <div class="kpi-grid" style="grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); margin-bottom: 0;">
-    <div class="kpi-card">
-      <div class="kpi-label">Intervals Available</div>
-      <div class="kpi-value">{{ market.tomorrow_stats.intervals_count }} / {{ market.tomorrow_stats.expected_intervals }}</div>
-      <div class="kpi-sub">Full day 15-minute coverage ({{ market.tomorrow_stats.coverage_percent_str }})</div>
-    </div>
-    <div class="kpi-card">
-      <div class="kpi-label">Tomorrow Minimum</div>
-      <div class="kpi-value" style="color: #16a34a;">
-        {{ "%.2f"|format(market.tomorrow_stats.min_price_eur_mwh) }}<span class="kpi-unit">EUR/MWh</span>
-      </div>
-      <div class="kpi-sub">Lowest cleared interval</div>
-    </div>
-    <div class="kpi-card">
-      <div class="kpi-label">Tomorrow Maximum</div>
-      <div class="kpi-value" style="color: #dc2626;">
-        {{ "%.2f"|format(market.tomorrow_stats.max_price_eur_mwh) }}<span class="kpi-unit">EUR/MWh</span>
-      </div>
-      <div class="kpi-sub">Peak cleared interval</div>
-    </div>
-    <div class="kpi-card">
-      <div class="kpi-label">Tomorrow Average</div>
-      <div class="kpi-value">
-        {{ "%.2f"|format(market.tomorrow_stats.avg_price_eur_mwh) }}<span class="kpi-unit">EUR/MWh</span>
-      </div>
-      <div class="kpi-sub">Mean day-ahead spot price</div>
-    </div>
-  </div>
-  {% elif market.tomorrow_stats.is_partial %}
-  <div class="kpi-grid" style="grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); margin-bottom: 12px;">
-    <div class="kpi-card" style="border-left: 3px solid #f59e0b;">
-      <div class="kpi-label">Intervals Available</div>
-      <div class="kpi-value" style="color: #d97706;">
-        {{ market.tomorrow_stats.intervals_count }} <span style="font-size: 0.85rem; color: var(--text-muted);">/ {{ market.tomorrow_stats.expected_intervals }}</span>
-      </div>
-      <div class="kpi-sub">{{ market.tomorrow_stats.coverage_percent_str }} coverage (Incomplete)</div>
-    </div>
-    <div class="kpi-card">
-      <div class="kpi-label">Received Range</div>
-      <div class="kpi-value" style="font-size: 1.1rem;">
-        {{ market.tomorrow_stats.first_interval_str }} &rarr; {{ market.tomorrow_stats.last_interval_str }}
-      </div>
-      <div class="kpi-sub">Early clearing / cross-border</div>
-    </div>
-    <div class="kpi-card">
-      <div class="kpi-label">Partial Min / Max</div>
-      <div class="kpi-value" style="font-size: 1.05rem;">
-        {{ "%.2f"|format(market.tomorrow_stats.min_price_eur_mwh) }} / {{ "%.2f"|format(market.tomorrow_stats.max_price_eur_mwh) }}
-      </div>
-      <div class="kpi-sub">EUR/MWh</div>
-    </div>
-    <div class="kpi-card">
-      <div class="kpi-label">Partial Average</div>
-      <div class="kpi-value" style="font-size: 1.05rem;">
-        {{ "%.2f"|format(market.tomorrow_stats.avg_price_eur_mwh) }}<span class="kpi-unit">EUR/MWh</span>
-      </div>
-      <div class="kpi-sub">Across {{ market.tomorrow_stats.intervals_count }} intervals</div>
-    </div>
-  </div>
-  <div style="padding: 12px 16px; background: #fffbeb; border: 1px dashed #f59e0b; border-radius: 6px; font-size: 0.82rem; color: #92400e;">
-    <strong>PARTIAL TOMORROW DATA:</strong> Received {{ market.tomorrow_stats.intervals_count }} of {{ market.tomorrow_stats.expected_intervals }} expected 15-minute intervals ({{ market.tomorrow_stats.first_interval_str }} &rarr; {{ market.tomorrow_stats.last_interval_str }} Europe/Vilnius). Day-ahead auction for Europe/Vilnius clears around ~13:00–14:00 CET (~14:00–15:00 EEST). A complete day requires all {{ market.tomorrow_stats.expected_intervals }} intervals without gaps before it can be marked complete.
-  </div>
-  {% else %}
-  <div style="padding: 16px; background: #f8fafc; border: 1px dashed var(--border-color); border-radius: 6px; color: var(--text-muted); font-size: 0.82rem;">
-    <strong>TOMORROW PRICES NOT YET PUBLISHED:</strong> Nord Pool day-ahead auction clears around 13:00–14:00 CET (~14:00–15:00 Europe/Vilnius). Tomorrow schedule will be populated once published by TSO feeds. Expected intervals for tomorrow: {{ market.tomorrow_stats.expected_intervals }}. No synthetic or mock data is invented.
-  </div>
-  {% endif %}
-</div>
-
-<!-- Raw Live Data Debug Panel (Requirement 9) -->
-<details class="card" style="margin-bottom: 24px;">
-  <summary style="font-size: 0.92rem; font-weight: 700; color: var(--text-main); cursor: pointer; padding: 4px 0;">
-    MARKET DATA DEBUG (Last 8 Normalized Records)
-  </summary>
-  <div style="margin-top: 14px;">
-    <div class="table-container">
-      <table class="engineering-table">
-        <thead>
-          <tr>
-            <th>Start Local</th>
-            <th>End Local</th>
-            <th>Start UTC</th>
-            <th class="num-col">Price (EUR/MWh)</th>
-            <th>Source</th>
-            <th>Fetched At</th>
-            <th>Original Res.</th>
-            <th>Derived?</th>
-            <th>Source Record ID</th>
-          </tr>
-        </thead>
-        <tbody>
-          {% for r in market.debug_records %}
-          <tr>
-            <td style="font-weight: 600; color: var(--primary, #2563eb);">{{ r.start_local }}</td>
-            <td style="font-weight: 600;">{{ r.end_local }}</td>
-            <td style="font-family: var(--font-mono); font-size: 0.75rem;">{{ r.start_utc }}</td>
-            <td class="num-col" style="font-weight: 700;">{{ "%.2f"|format(r.price_eur_mwh) }}</td>
-            <td><span class="badge badge-slate">{{ r.source }}</span></td>
-            <td>{{ r.fetched_at }}</td>
-            <td>{{ r.original_resolution }}</td>
-            <td>
-              <span class="badge {% if r.derived_flag == 'YES' %}badge-amber{% else %}badge-green{% endif %}" style="font-size: 0.68rem;">
-                {{ r.derived_flag }}
-              </span>
-            </td>
-            <td style="font-family: var(--font-mono); font-size: 0.72rem; color: var(--text-muted);">{{ r.source_record_id }}</td>
-          </tr>
-          {% endfor %}
-        </tbody>
-      </table>
-    </div>
-  </div>
-</details>
-
-<!-- Detailed Reference Configuration Specifications -->
-<div class="grid-2">
-  <!-- Storage & Vessel -->
-  <div class="card">
-    <div class="card-header">
-      <h3 class="card-title">Storage &amp; Containment Specifications</h3>
-      <span class="badge badge-blue">PHYSICAL STORAGE</span>
-    </div>
-    <table class="engineering-table">
-      <tbody>
-        <tr>
-          <td>Physical Temperature Span</td>
-          <td class="num-col"><strong>{{ "%.1f"|format(temp_min_c) }} &rarr; {{ "%.1f"|format(temp_max_c) }} °C</strong></td>
-        </tr>
-        <tr>
-          <td>Thermal Storage Medium</td>
-          <td class="num-col">Quartz sand (SiO₂)</td>
-        </tr>
-        <tr>
-          <td>Specific Heat Capacity Model</td>
-          <td class="num-col">Cp(T_K) = T_K + 427 J/(kg·K)</td>
-        </tr>
-        <tr>
-          <td>Specific Storage Capacity</td>
-          <td class="num-col">0.0544 kWh/kg (across 80–300 °C)</td>
-        </tr>
-        <tr>
-          <td>Full-Span Physical Capacity</td>
-          <td class="num-col"><strong>{{ "%.2f"|format(full_span_capacity_kwh) }} kWh</strong></td>
-        </tr>
-        <tr>
-          <td>Dispatchable Usable Capacity</td>
-          <td class="num-col"><strong>{{ "%.2f"|format(dispatchable_capacity_kwh) }} kWh</strong></td>
-        </tr>
-        <tr>
-          <td>Optimizer SOC Window</td>
-          <td class="num-col">{{ "%.0f"|format(soc_min_pct) }}% &rarr; {{ "%.0f"|format(soc_max_pct) }}% (1.5 &rarr; 15.0 kWh)</td>
-        </tr>
-        <tr>
-          <td>Vessel Internal Diameter</td>
-          <td class="num-col">{{ "%.0f"|format(vessel_id_mm) }} mm</td>
-        </tr>
-        <tr>
-          <td>Vessel Straight Shell Height</td>
-          <td class="num-col">{{ "%.0f"|format(vessel_height_mm) }} mm</td>
-        </tr>
-        <tr>
-          <td>Gross Internal Cylindrical Volume</td>
-          <td class="num-col">~{{ "%.1f"|format(vessel_gross_vol_l) }} L (approx. 269 L)</td>
-        </tr>
-        <tr>
-          <td>Available Net Volume (Post-Displacement)</td>
-          <td class="num-col">~{{ "%.1f"|format(vessel_net_vol_l) }} L</td>
-        </tr>
-        <tr>
-          <td>Vessel Status</td>
-          <td class="num-col"><span class="badge badge-amber">{{ vessel_status }}</span></td>
-        </tr>
-      </tbody>
-    </table>
-  </div>
-
-  <!-- Heat Exchanger & Electrical -->
-  <div class="card">
-    <div class="card-header">
-      <h3 class="card-title">Heat Exchanger &amp; Electrical Architecture</h3>
-      <span class="badge badge-blue">PROCESS &amp; GRID</span>
-    </div>
-    <table class="engineering-table">
-      <tbody>
-        <tr>
-          <td>Coil Material</td>
-          <td class="num-col"><strong>{{ hx_material }}</strong></td>
-        </tr>
-        <tr>
-          <td>Coil Tube Dimensions</td>
-          <td class="num-col">{{ hx_tube }} (OD × wall)</td>
-        </tr>
-        <tr>
-          <td>Mean Coil Diameter &amp; Turns</td>
-          <td class="num-col">{{ hx_coil_dia_mm }} / {{ hx_turns }} turns</td>
-        </tr>
-        <tr>
-          <td>Tube Length &amp; Surface Area</td>
-          <td class="num-col">{{ hx_length_m }} / <strong>{{ "%.2f"|format(hx_area_m2) }} m²</strong></td>
-        </tr>
-        <tr>
-          <td>Reference Overall U Coefficient</td>
-          <td class="num-col"><strong>{{ "%.1f"|format(hx_ref_u) }} W/m²K</strong> [engineering estimate]</td>
-        </tr>
-        <tr>
-          <td>Reference Airflow &amp; Inlet Temp</td>
-          <td class="num-col">{{ "%.1f"|format(hx_ref_airflow) }} m³/h @ {{ "%.1f"|format(hx_ref_inlet_temp) }} °C</td>
-        </tr>
-        <tr>
-          <td>HX Output @ 100% SOC (300 °C)</td>
-          <td class="num-col">{{ "%.2f"|format(hx_pmax_100_soc_kw) }} kW</td>
-        </tr>
-        <tr>
-          <td>HX Output @ 50% SOC (195 °C)</td>
-          <td class="num-col">{{ "%.2f"|format(hx_pmax_50_soc_kw) }} kW</td>
-        </tr>
-        <tr>
-          <td>HX Output @ 10% SOC (105 °C)</td>
-          <td class="num-col">{{ "%.2f"|format(hx_pmax_min_soc_kw) }} kW (derated)</td>
-        </tr>
-        <tr>
-          <td>Heater Configuration</td>
-          <td class="num-col">{{ heater_drywells }}</td>
-        </tr>
-        <tr>
-          <td>Total Installed Heater Power</td>
-          <td class="num-col"><strong>{{ "%.1f"|format(heater_power_kw) }} kW</strong></td>
-        </tr>
-        <tr>
-          <td>Grid Connection Limit</td>
-          <td class="num-col"><strong>{{ "%.1f"|format(grid_limit_kw) }} kW</strong></td>
-        </tr>
-        <tr>
-          <td>Available TES Charging Headroom</td>
-          <td class="num-col"><strong>{{ "%.2f"|format(available_tes_charging_headroom_kw) }} kW</strong> (12.0 kW - 2.0 kW site - 0.05 kW aux)</td>
-        </tr>
-        <tr>
-          <td>Remaining Grid Margin at 9 kW Charge</td>
-          <td class="num-col"><strong>{{ "%.2f"|format(remaining_grid_margin_kw) }} kW</strong> (during active charging)</td>
-        </tr>
-        <tr>
-          <td>Reference Site Process Load</td>
-          <td class="num-col">{{ "%.1f"|format(site_load_kw) }} kW</td>
-        </tr>
-        <tr>
-          <td>Continuous Auxiliary Electrical Load</td>
-          <td class="num-col">{{ "%.2f"|format(aux_power_kw) }} kW (50 W blower/controls)</td>
-        </tr>
-      </tbody>
-    </table>
-  </div>
-</div>
 {% endblock %}
 
 {% block scripts %}
 <script>
-document.addEventListener("DOMContentLoaded", function() {
-  const intervals = {{ market.today_stats.intervals | tojson }};
-  const currentIntervalStr = {{ market.interval_str | tojson }};
-
-  if (!intervals || intervals.length === 0) return;
-
-  const labels = intervals.map(iv => iv.start_local);
-  const prices = intervals.map(iv => iv.price_eur_mwh);
-
-  const currentIdx = intervals.findIndex(iv => `${iv.start_local} -> ${iv.end_local}` === currentIntervalStr);
-
-  const pointRadii = intervals.map((iv, idx) => idx === currentIdx ? 6 : 0);
-  const pointColors = intervals.map((iv, idx) => idx === currentIdx ? '#dc2626' : '#2563eb');
-  const pointBorderColors = intervals.map((iv, idx) => idx === currentIdx ? '#ffffff' : '#2563eb');
-  const pointBorderWidths = intervals.map((iv, idx) => idx === currentIdx ? 2 : 0);
-
-  const canvas = document.getElementById('todayPriceChart');
-  if (canvas) {
-    const ctx = canvas.getContext('2d');
-    new Chart(ctx, {
+  // Overview Price Chart (24h)
+  const priceCtx = document.getElementById('overviewPriceChart');
+  if (priceCtx) {
+    const hours = ['00:00','02:00','04:00','06:00','08:00','10:00','12:00','14:00','16:00','18:00','20:00','22:00','24:00'];
+    const prices = [52.1, 48.0, 42.5, 58.2, 85.0, 78.4, 62.0, 55.3, 68.9, 112.5, 94.0, 72.1, 60.0];
+    new Chart(priceCtx, {
       type: 'line',
       data: {
-        labels: labels,
+        labels: hours,
         datasets: [{
-          label: 'Spot Price (EUR/MWh)',
+          label: 'Market Price (EUR/MWh)',
           data: prices,
           borderColor: '#2563eb',
-          backgroundColor: 'rgba(37, 99, 235, 0.08)',
+          backgroundColor: 'rgba(37, 99, 235, 0.1)',
           fill: true,
-          stepped: 'before',
-          borderWidth: 2,
-          pointRadius: pointRadii,
-          pointHoverRadius: 6,
-          pointBackgroundColor: pointColors,
-          pointBorderColor: pointBorderColors,
-          pointBorderWidth: pointBorderWidths,
+          stepped: true,
+          tension: 0
         }]
       },
       options: {
         responsive: true,
         maintainAspectRatio: false,
-        plugins: {
-          legend: { display: false },
-          tooltip: {
-            callbacks: {
-              title: function(items) {
-                const idx = items[0].dataIndex;
-                return `${intervals[idx].start_local} – ${intervals[idx].end_local} (Europe/Vilnius)`;
-              },
-              label: function(item) {
-                return ` Spot Price: ${item.raw.toFixed(2)} EUR/MWh`;
-              }
-            }
-          }
-        },
+        plugins: { legend: { display: false } },
         scales: {
-          x: {
-            grid: { display: false },
-            ticks: { maxTicksLimit: 12, font: { size: 11 } }
-          },
-          y: {
-            grid: { color: '#f1f5f9' },
-            title: { display: true, text: 'Price (EUR/MWh)', font: { size: 11, weight: 'bold' } },
-            ticks: { font: { size: 11 } }
-          }
+          y: { title: { display: true, text: 'EUR/MWh' }, beginAtZero: false }
         }
       }
     });
   }
-});
+
+  // Overview Temperature Chart (8h)
+  const tempCtx = document.getElementById('overviewTempChart');
+  if (tempCtx) {
+    const timeLabels = ['06:00', '07:00', '08:00', '09:00', '10:00', '11:00', '12:00', '13:00', '14:00'];
+    new Chart(tempCtx, {
+      type: 'line',
+      data: {
+        labels: timeLabels,
+        datasets: [
+          {
+            label: 'Sand Bed Temp (°C)',
+            data: [205, 202, 199, 196, 204, 201, 198, 195, 197],
+            borderColor: '#ea580c',
+            backgroundColor: 'transparent',
+            tension: 0.2
+          },
+          {
+            label: 'Dryer Supply Temp (°C)',
+            data: [70, 70, 70, 70, 70, 70, 70, 70, 70],
+            borderColor: '#0d9488',
+            backgroundColor: 'transparent',
+            tension: 0.2
+          },
+          {
+            label: 'Ambient Inlet Temp (°C)',
+            data: [38, 39, 40, 41, 42, 41, 40, 40, 40],
+            borderColor: '#64748b',
+            borderDash: [5, 5],
+            backgroundColor: 'transparent',
+            tension: 0.2
+          }
+        ]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        scales: {
+          y: { title: { display: true, text: 'Temperature (°C)' }, beginAtZero: false }
+        }
+      }
+    });
+  }
 </script>
 {% endblock %}

@@ -3,27 +3,31 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>{% block title %}Virtual TES Gen0 Dashboard{% endblock %}</title>
-  <!-- Local Vendor Scripts with CDN fallback (Phase 5.9 Resilient Runtime) -->
+  <title>{% block title %}Virtual TES Gen0 &bull; GEN0 Energy Manager{% endblock %}</title>
+  <!-- Local Vendor Scripts with CDN fallback -->
   <script src="/static/js/chart.min.js"></script>
   <script>window.Chart || document.write('<script src="https://cdn.jsdelivr.net/npm/chart.js"><\/script>')</script>
   <script src="/static/js/htmx.min.js"></script>
   <script>window.htmx || document.write('<script src="https://unpkg.com/htmx.org@2.0.2"><\/script>')</script>
   <style>
     :root {
-      --bg-page: #f8fafc;
+      --bg-page: #f1f5f9;
       --bg-card: #ffffff;
+      --bg-sidebar: #0f172a;
+      --bg-sidebar-hover: #1e293b;
+      --bg-sidebar-active: #1d4ed8;
       --text-main: #0f172a;
       --text-muted: #64748b;
+      --text-sidebar: #94a3b8;
       --border-color: #e2e8f0;
       --primary: #2563eb;
       --primary-hover: #1d4ed8;
+      --accent-tes: #f59e0b;
+      --accent-dryer: #0d9488;
+      --accent-bess: #16a34a;
       --success: #16a34a;
       --warning: #d97706;
-      --warning-bg: #fffbeb;
       --danger: #dc2626;
-      --danger-bg: #fef2f2;
-      --info-bg: #eff6ff;
       --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
       --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
     }
@@ -34,200 +38,342 @@
       background-color: var(--bg-page);
       color: var(--text-main);
       line-height: 1.5;
-      font-size: 14px;
+      font-size: 13.5px;
+      min-height: 100vh;
+      display: flex;
     }
 
-    /* Top Global Header */
-    .global-header {
-      background: #ffffff;
-      border-bottom: 2px solid var(--border-color);
-      padding: 12px 24px;
+    /* Layout Structure: Sidebar + Main App */
+    .app-layout {
+      display: flex;
+      width: 100%;
+      min-height: 100vh;
     }
-    .header-top {
+
+    /* Sidebar Navigation */
+    .sidebar {
+      width: 240px;
+      background: var(--bg-sidebar);
+      color: #f8fafc;
+      flex-shrink: 0;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      border-right: 1px solid #1e293b;
+    }
+    .sidebar-header {
+      padding: 20px 20px 16px;
+      border-bottom: 1px solid #1e293b;
+    }
+    .sidebar-brand {
+      display: flex;
+      flex-direction: column;
+    }
+    .brand-title {
+      font-size: 1.45rem;
+      font-weight: 800;
+      letter-spacing: -0.03em;
+      color: #ffffff;
+      line-height: 1.1;
+    }
+    .brand-subtitle {
+      font-size: 0.8rem;
+      font-weight: 500;
+      color: #94a3b8;
+      margin-top: 2px;
+    }
+
+    .sidebar-nav {
+      padding: 16px 10px;
+      flex-grow: 1;
+      display: flex;
+      flex-direction: column;
+      gap: 3px;
+      overflow-y: auto;
+    }
+    .nav-group-title {
+      font-size: 0.68rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: #64748b;
+      padding: 10px 12px 4px;
+    }
+    .nav-item {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 9px 12px;
+      border-radius: 6px;
+      color: #94a3b8;
+      text-decoration: none;
+      font-size: 0.84rem;
+      font-weight: 500;
+      transition: all 0.15s ease;
+    }
+    .nav-item:hover {
+      background: var(--bg-sidebar-hover);
+      color: #f8fafc;
+    }
+    .nav-item.active {
+      background: var(--bg-sidebar-active);
+      color: #ffffff;
+      font-weight: 600;
+    }
+    .nav-item svg {
+      width: 17px;
+      height: 17px;
+      flex-shrink: 0;
+      opacity: 0.9;
+    }
+    .nav-sub {
+      padding-left: 32px;
+      font-size: 0.8rem;
+    }
+
+    .sidebar-footer {
+      padding: 16px;
+      border-top: 1px solid #1e293b;
+      background: #090d16;
+    }
+    .mode-indicator-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      background: #1e293b;
+      color: #e2e8f0;
+      padding: 6px 10px;
+      border-radius: 6px;
+      font-size: 0.75rem;
+      font-weight: 600;
+      width: 100%;
+      margin-bottom: 8px;
+    }
+    .status-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: #22c55e;
+      box-shadow: 0 0 6px #22c55e;
+      flex-shrink: 0;
+    }
+    .status-dot-blue { background: #3b82f6; box-shadow: 0 0 6px #3b82f6; }
+    .status-dot-amber { background: #f59e0b; box-shadow: 0 0 6px #f59e0b; }
+    .sidebar-meta {
+      font-size: 0.7rem;
+      color: #64748b;
+      line-height: 1.3;
+    }
+
+    /* Main Content Container */
+    .app-main {
+      flex-grow: 1;
+      display: flex;
+      flex-direction: column;
+      overflow-x: hidden;
+      min-width: 0;
+    }
+
+    /* Top Application Header Bar */
+    .top-bar {
+      background: #ffffff;
+      border-bottom: 1px solid var(--border-color);
+      padding: 14px 28px;
       display: flex;
       justify-content: space-between;
       align-items: center;
       flex-wrap: wrap;
-      gap: 12px;
-    }
-    .brand-title {
-      font-size: 1.3rem;
-      font-weight: 700;
-      letter-spacing: -0.02em;
-      color: #0f172a;
-      display: flex;
-      align-items: center;
-      gap: 10px;
-    }
-    .badge {
-      display: inline-block;
-      padding: 3px 8px;
-      font-size: 0.75rem;
-      font-weight: 600;
-      border-radius: 4px;
-      text-transform: uppercase;
-      letter-spacing: 0.04em;
-    }
-    .badge-amber {
-      background: #fef3c7;
-      color: #92400e;
-      border: 1px solid #fde68a;
-    }
-    .badge-blue {
-      background: #dbeafe;
-      color: #1e40af;
-      border: 1px solid #bfdbfe;
-    }
-    .badge-green {
-      background: #dcfce7;
-      color: #166534;
-      border: 1px solid #bbf7d0;
-    }
-    .badge-red {
-      background: #fee2e2;
-      color: #991b1b;
-      border: 1px solid #fecaca;
-    }
-
-    .header-metadata {
-      display: flex;
-      gap: 16px;
-      font-size: 0.8rem;
-      color: var(--text-muted);
-      align-items: center;
-    }
-    .meta-item strong { color: var(--text-main); }
-
-    /* Navigation Bar */
-    .nav-bar {
-      background: #ffffff;
-      border-bottom: 1px solid var(--border-color);
-      padding: 0 24px;
-      display: flex;
-      overflow-x: auto;
-      gap: 4px;
-    }
-    .nav-link {
-      display: inline-block;
-      padding: 10px 14px;
-      color: var(--text-muted);
-      text-decoration: none;
-      font-weight: 500;
-      font-size: 0.85rem;
-      border-bottom: 3px solid transparent;
-      white-space: nowrap;
-      transition: color 0.15s, border-color 0.15s;
-    }
-    .nav-link:hover {
-      color: var(--primary);
-    }
-    .nav-link.active {
-      color: var(--primary);
-      border-bottom-color: var(--primary);
-      font-weight: 600;
-    }
-
-    /* Main Container */
-    .main-container {
-      max-width: 1440px;
-      margin: 0 auto;
-      padding: 24px;
-    }
-
-    /* Engineering Notice Box */
-    .engineering-banner {
-      background: var(--warning-bg);
-      border-left: 4px solid var(--warning);
-      padding: 10px 16px;
-      border-radius: 4px;
-      font-size: 0.82rem;
-      color: #92400e;
-      margin-bottom: 20px;
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-    }
-
-    /* KPI Grid */
-    .kpi-grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
       gap: 14px;
-      margin-bottom: 24px;
     }
-    .kpi-card {
-      background: var(--bg-card);
-      border: 1px solid var(--border-color);
-      border-radius: 6px;
-      padding: 14px 16px;
-    }
-    .kpi-label {
-      font-size: 0.75rem;
-      font-weight: 600;
-      color: var(--text-muted);
-      text-transform: uppercase;
-      letter-spacing: 0.03em;
-      margin-bottom: 6px;
-    }
-    .kpi-value {
-      font-size: 1.45rem;
+    .top-bar-title h1 {
+      font-size: 1.25rem;
       font-weight: 700;
       color: var(--text-main);
-      font-family: var(--font-sans);
+      margin: 0;
+      line-height: 1.2;
     }
-    .kpi-unit {
-      font-size: 0.85rem;
-      font-weight: 500;
+    .top-bar-title p {
+      font-size: 0.8rem;
       color: var(--text-muted);
-      margin-left: 3px;
+      margin-top: 2px;
     }
-    .kpi-sub {
-      font-size: 0.75rem;
-      color: var(--text-muted);
-      margin-top: 4px;
+    .top-bar-actions {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+    .header-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 6px 12px;
+      background: #f8fafc;
+      border: 1px solid var(--border-color);
+      border-radius: 6px;
+      font-size: 0.78rem;
+      font-weight: 600;
+      color: var(--text-main);
+    }
+    .header-pill strong {
+      color: var(--primary);
+      font-weight: 700;
+    }
+    .header-pill.green strong {
+      color: var(--success);
     }
 
-    /* Section Cards */
+    /* Page Content Body */
+    .page-content {
+      padding: 24px 28px;
+      flex-grow: 1;
+      max-width: 1600px;
+      width: 100%;
+      margin: 0 auto;
+    }
+
+    /* Common Card Styles */
     .card {
       background: var(--bg-card);
       border: 1px solid var(--border-color);
-      border-radius: 6px;
-      padding: 20px;
-      margin-bottom: 24px;
+      border-radius: 8px;
+      padding: 18px 20px;
+      margin-bottom: 20px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.03);
     }
     .card-header {
       display: flex;
       justify-content: space-between;
       align-items: center;
-      margin-bottom: 16px;
-      border-bottom: 1px solid var(--border-color);
+      margin-bottom: 14px;
       padding-bottom: 10px;
+      border-bottom: 1px solid var(--border-color);
     }
     .card-title {
-      font-size: 1.05rem;
-      font-weight: 600;
+      font-size: 0.96rem;
+      font-weight: 700;
       color: var(--text-main);
+      display: flex;
+      align-items: center;
+      gap: 8px;
     }
 
-    /* Layout Grids */
-    .grid-2 {
+    /* KPI Grid */
+    .kpi-grid {
       display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 20px;
+      grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+      gap: 16px;
+      margin-bottom: 20px;
     }
-    .grid-3 {
-      display: grid;
-      grid-template-columns: 1fr 1fr 1fr;
-      gap: 20px;
+    .kpi-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border-color);
+      border-radius: 8px;
+      padding: 14px 18px;
+      position: relative;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.02);
     }
-    @media (max-width: 900px) {
-      .grid-2, .grid-3 { grid-template-columns: 1fr; }
+    .kpi-top {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 8px;
     }
+    .kpi-label {
+      font-size: 0.74rem;
+      font-weight: 600;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+    .kpi-icon {
+      width: 28px;
+      height: 28px;
+      border-radius: 6px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: #eff6ff;
+      color: var(--primary);
+    }
+    .kpi-icon.orange { background: #fff7ed; color: #ea580c; }
+    .kpi-icon.teal { background: #f0fdfa; color: #0d9488; }
+    .kpi-icon.amber { background: #fefce8; color: #ca8a04; }
+    .kpi-icon.green { background: #f0fdf4; color: #16a34a; }
+    .kpi-value {
+      font-size: 1.55rem;
+      font-weight: 800;
+      color: var(--text-main);
+      line-height: 1.2;
+    }
+    .kpi-unit {
+      font-size: 0.85rem;
+      font-weight: 500;
+      color: var(--text-muted);
+      margin-left: 4px;
+    }
+    .kpi-sub {
+      font-size: 0.74rem;
+      color: var(--text-muted);
+      margin-top: 6px;
+    }
+    .kpi-bar {
+      height: 4px;
+      background: #e2e8f0;
+      border-radius: 2px;
+      margin-top: 8px;
+      overflow: hidden;
+    }
+    .kpi-bar-fill {
+      height: 100%;
+      border-radius: 2px;
+      background: var(--primary);
+    }
+
+    /* Badges */
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      padding: 3px 8px;
+      font-size: 0.72rem;
+      font-weight: 700;
+      border-radius: 4px;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+    .badge-amber { background: #fef3c7; color: #92400e; border: 1px solid #fde68a; }
+    .badge-blue { background: #dbeafe; color: #1e40af; border: 1px solid #bfdbfe; }
+    .badge-green { background: #dcfce7; color: #166534; border: 1px solid #bbf7d0; }
+    .badge-slate { background: #f1f5f9; color: #475569; border: 1px solid #e2e8f0; }
+    .badge-red { background: #fee2e2; color: #991b1b; border: 1px solid #fecaca; }
+
+    /* Buttons & Controls */
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      padding: 7px 14px;
+      font-size: 0.8rem;
+      font-weight: 600;
+      border-radius: 5px;
+      border: 1px solid transparent;
+      cursor: pointer;
+      text-decoration: none;
+      transition: all 0.15s ease;
+    }
+    .btn-primary { background: var(--primary); color: #fff; }
+    .btn-primary:hover { background: var(--primary-hover); }
+    .btn-outline { background: #fff; border-color: var(--border-color); color: var(--text-main); }
+    .btn-outline:hover { background: #f8fafc; border-color: #cbd5e1; }
+    .btn-success { background: var(--success); color: #fff; }
+    .btn-sm { padding: 4px 10px; font-size: 0.75rem; }
 
     /* Tables */
-    .table-container {
-      overflow-x: auto;
-    }
+    .table-container { overflow-x: auto; }
     table.engineering-table {
       width: 100%;
       border-collapse: collapse;
@@ -235,7 +381,7 @@
       text-align: left;
     }
     table.engineering-table th {
-      background: #f1f5f9;
+      background: #f8fafc;
       color: var(--text-muted);
       font-weight: 600;
       padding: 9px 12px;
@@ -247,18 +393,14 @@
       border-bottom: 1px solid var(--border-color);
       white-space: nowrap;
     }
-    table.engineering-table tr:hover td {
-      background: #f8fafc;
-    }
+    table.engineering-table tr:hover td { background: #f8fafc; }
     .num-col { text-align: right; font-family: var(--font-mono); }
 
-    /* Forms & Controls */
-    .form-group {
-      margin-bottom: 14px;
-    }
+    /* Forms */
+    .form-group { margin-bottom: 12px; }
     .form-label {
       display: block;
-      font-size: 0.8rem;
+      font-size: 0.78rem;
       font-weight: 600;
       color: var(--text-main);
       margin-bottom: 4px;
@@ -267,8 +409,8 @@
       width: 100%;
       padding: 7px 10px;
       border: 1px solid var(--border-color);
-      border-radius: 4px;
-      font-size: 0.85rem;
+      border-radius: 5px;
+      font-size: 0.82rem;
       background: #ffffff;
       color: var(--text-main);
     }
@@ -277,35 +419,48 @@
       border-color: var(--primary);
       box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.15);
     }
-    .slider-container {
-      display: flex;
-      align-items: center;
-      gap: 12px;
+
+    /* Grids */
+    .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+    .grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 20px; }
+    @media (max-width: 1024px) {
+      .grid-3 { grid-template-columns: 1fr; }
     }
-    .btn {
-      display: inline-block;
+    @media (max-width: 768px) {
+      .app-layout { flex-direction: column; }
+      .sidebar { width: 100%; border-right: none; border-bottom: 1px solid #1e293b; }
+      .grid-2 { grid-template-columns: 1fr; }
+      .page-content { padding: 14px; }
+      .top-bar { padding: 10px 14px; }
+    }
+
+    /* Notice Banner */
+    .engineering-banner {
+      background: #fffbeb;
+      border-left: 4px solid #f59e0b;
       padding: 8px 14px;
-      font-size: 0.82rem;
-      font-weight: 600;
       border-radius: 4px;
-      border: 1px solid transparent;
-      cursor: pointer;
-      text-decoration: none;
-      transition: background 0.15s;
-    }
-    .btn-primary { background: var(--primary); color: #fff; }
-    .btn-primary:hover { background: var(--primary-hover); }
-    .btn-outline { background: #fff; border-color: var(--border-color); color: var(--text-main); }
-    .btn-outline:hover { background: #f8fafc; border-color: #cbd5e1; }
-
-    /* Chart Containers */
-    .chart-box {
-      position: relative;
-      width: 100%;
-      height: 320px;
+      font-size: 0.78rem;
+      color: #92400e;
+      margin-bottom: 16px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 8px;
     }
 
-    /* Production Data Banner (Phase 5.9) */
+    footer {
+      text-align: center;
+      padding: 18px 24px;
+      color: var(--text-muted);
+      font-size: 0.75rem;
+      border-top: 1px solid var(--border-color);
+      background: #fff;
+      margin-top: auto;
+    }
+
+    /* Production Banner (Phase 5.9) */
     .production-banner {
       background: #0f172a;
       color: #f8fafc;
@@ -340,7 +495,6 @@
     .dot-live { background: #22c55e; box-shadow: 0 0 8px #22c55e; }
     .dot-virtual { background: #3b82f6; }
     .dot-off { background: #94a3b8; }
-
     .user-session-info {
       display: flex;
       align-items: center;
@@ -360,33 +514,10 @@
       border-color: #94a3b8;
       background: #334155;
     }
-
-    @media (max-width: 640px) {
-      .global-header { padding: 10px 14px; }
-      .main-container { padding: 12px; }
-      .header-top { flex-direction: column; align-items: flex-start; gap: 8px; }
-      .header-metadata { flex-wrap: wrap; gap: 8px; font-size: 0.72rem; }
-      .kpi-grid { grid-template-columns: 1fr; gap: 10px; }
-      .production-banner { padding: 6px 12px; font-size: 0.72rem; }
-      .banner-items { gap: 8px; }
-      .card { padding: 14px; }
-      .nav-bar { padding: 0 10px; }
-      .nav-link { padding: 8px 10px; font-size: 0.8rem; }
-    }
-
-    footer {
-      text-align: center;
-      padding: 24px;
-      color: var(--text-muted);
-      font-size: 0.78rem;
-      border-top: 1px solid var(--border-color);
-      background: #fff;
-      margin-top: 40px;
-    }
   </style>
+  {% block head_extra %}{% endblock %}
 </head>
 <body>
-
   <!-- Top Production Data Banner (Phase 5.9 Requirement 21) -->
   <div class="production-banner">
     <div class="banner-items">
@@ -418,47 +549,159 @@
     </div>
   </div>
 
-  <!-- Global Header -->
-  <header class="global-header">
-    <div class="header-top">
-      <div class="brand-title">
-        <span>{{ app_title }}</span>
-        <span class="badge badge-amber">{{ model_badge }}</span>
+  <div class="app-layout">
+    <!-- Sidebar Navigation -->
+    <aside class="sidebar">
+      <div>
+        <div class="sidebar-header">
+          <div class="sidebar-brand">
+            <span class="brand-title">GEN0</span>
+            <span class="brand-subtitle">Energy Manager</span>
+          </div>
+        </div>
+
+        <nav class="sidebar-nav">
+          <a href="/dashboard/overview" class="nav-item {% if active_page == 'overview' %}active{% endif %}">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path><polyline points="9 22 9 12 15 12 15 22"></polyline></svg>
+            <span>Overview</span>
+          </a>
+          <a href="/dashboard/market" class="nav-item {% if active_page in ['market', 'dispatch'] %}active{% endif %}">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="20" x2="18" y2="10"></line><line x1="12" y1="20" x2="12" y2="4"></line><line x1="6" y1="20" x2="6" y2="14"></line></svg>
+            <span>Market &amp; Dispatch</span>
+          </a>
+          <a href="/dashboard/history" class="nav-item {% if active_page == 'history' %}active{% endif %}">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
+            <span>History &amp; Savings</span>
+          </a>
+
+          <div class="nav-group-title">Equipment</div>
+          <a href="/dashboard/physical" class="nav-item nav-sub {% if active_page == 'physical' %}active{% endif %}">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path></svg>
+            <span>TES Thermal</span>
+          </a>
+          <a href="/dashboard/dryer" class="nav-item nav-sub {% if active_page == 'dryer' %}active{% endif %}">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9.59 4.59A2 2 0 1 1 11 8H2m10.59 11.41A2 2 0 1 0 14 16H2m15.73-8.27A2.5 2.5 0 1 1 19.5 12H2"></path></svg>
+            <span>Dryer (Virtual V1)</span>
+          </a>
+          <a href="/dashboard/bess" class="nav-item nav-sub {% if active_page == 'bess' %}active{% endif %}">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="1" y="6" width="18" height="12" rx="2"></rect><line x1="23" y1="11" x2="23" y2="13"></line></svg>
+            <span>BESS (Proposed)</span>
+          </a>
+
+          <div class="nav-group-title">Engineering Lab</div>
+          <a href="/dashboard/hx" class="nav-item nav-sub {% if active_page == 'hx' %}active{% endif %}">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><path d="M8 12h8"></path></svg>
+            <span>Heat Exchanger</span>
+          </a>
+          <a href="/dashboard/vessel" class="nav-item nav-sub {% if active_page == 'vessel' %}active{% endif %}">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"></path></svg>
+            <span>Vessel Geometry</span>
+          </a>
+          <a href="/dashboard/economics" class="nav-item nav-sub {% if active_page == 'economics' %}active{% endif %}">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><path d="M16 8h-6a2 2 0 1 0 0 4h4a2 2 0 1 1 0 4H8"></path></svg>
+            <span>Economic Models</span>
+          </a>
+          <a href="/dashboard/sizing" class="nav-item nav-sub {% if active_page == 'sizing' %}active{% endif %}">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"></rect><line x1="3" y1="9" x2="21" y2="9"></line><line x1="9" y1="21" x2="9" y2="9"></line></svg>
+            <span>Sizing Matrix</span>
+          </a>
+          <a href="/dashboard/scenarios" class="nav-item nav-sub {% if active_page == 'scenarios' %}active{% endif %}">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline></svg>
+            <span>Saved Scenarios</span>
+          </a>
+
+          <div class="nav-group-title">System</div>
+          <a href="/dashboard/assumptions" class="nav-item nav-sub {% if active_page == 'assumptions' %}active{% endif %}">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
+            <span>System &amp; Devices</span>
+          </a>
+        </nav>
       </div>
-      <div class="header-metadata">
-        <div class="meta-item">Model: <strong>{{ model_version }}</strong></div>
-        <div class="meta-item">Price Source: <strong>{{ price_source }}</strong></div>
-        <div class="meta-item">Status: <span class="badge badge-blue">{{ physical_status }}</span></div>
-        <div class="meta-item">Semantics: <strong>{{ capacity_semantics_version }}</strong></div>
+
+      <div class="sidebar-footer">
+        <div class="mode-indicator-pill">
+          <span class="status-dot"></span>
+          <span>Simulation Mode</span>
+        </div>
+        <div class="sidebar-meta">
+          <div>Physical Gen0: <strong>Not Connected</strong></div>
+          <div>Telemetry: <strong>Simulated Twin</strong></div>
+        </div>
       </div>
+    </aside>
+
+    <!-- Main Workspace -->
+    <div class="app-main">
+      <!-- Top Bar -->
+      <header class="top-bar">
+        <div class="top-bar-title">
+          <h1>{% block page_header %}Overview{% endblock %}</h1>
+          <p>{% block page_subtitle %}Real-time status and operational ledger for TES, Dryer, and Site Loads{% endblock %}</p>
+        </div>
+
+        <div class="top-bar-actions">
+          <div class="header-pill green">
+            <span>Market Price:</span>
+            <strong>{% if market is defined and market and market.get('current_price_eur_kwh') is not none %}&euro;{{ "%.3f"|format(market.get('current_price_eur_kwh')) }}/kWh{% else %}&euro;0.068/kWh{% endif %}</strong>
+          </div>
+          <div class="header-pill">
+            <span>Grid Limit:</span>
+            <strong>{{ grid_connection_limit_kw|default(12.0) }} kW</strong>
+          </div>
+          <div class="header-pill">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>
+            <span id="topbar-live-clock">--:-- Europe/Vilnius</span>
+          </div>
+
+          <div class="header-pill" style="padding: 4px 8px;">
+            {% if user %}
+              <span style="font-size: 0.75rem; color: #64748b;">{{ user.username }}</span>
+              <a href="/logout" style="color: #dc2626; text-decoration: none; font-size: 0.72rem; margin-left: 6px; font-weight: 700;">Logout</a>
+            {% else %}
+              <a href="/login" style="color: var(--primary); text-decoration: none; font-size: 0.72rem; font-weight: 700;">Login</a>
+            {% endif %}
+          </div>
+        </div>
+      </header>
+
+      <!-- Page Content -->
+      <main class="page-content">
+        {% block content %}{% endblock %}
+      </main>
+
+      <footer>
+        Virtual TES Gen0 &bull; GEN0 Energy Manager &bull; Phase 5.10 Virtual Dryer V1 &bull; 
+        Supervisory Platform &bull; Physical actuation strictly disabled (Cloud Railway Sandbox)
+      </footer>
     </div>
-  </header>
+  </div>
 
-  <!-- Main Navigation -->
-  <nav class="nav-bar">
-    <a href="/dashboard/overview" class="nav-link {% if active_page == 'overview' %}active{% endif %}">Overview</a>
-    <a href="/dashboard/market" class="nav-link {% if active_page == 'market' %}active{% endif %}">Market</a>
-    <a href="/dashboard/physical" class="nav-link {% if active_page == 'physical' %}active{% endif %}">TES Physical Model</a>
-    <a href="/dashboard/hx" class="nav-link {% if active_page == 'hx' %}active{% endif %}">Heat Exchanger</a>
-    <a href="/dashboard/vessel" class="nav-link {% if active_page == 'vessel' %}active{% endif %}">Vessel / Sand Sizing</a>
-    <a href="/dashboard/dispatch" class="nav-link {% if active_page == 'dispatch' %}active{% endif %}">Market &amp; Dispatch</a>
-    <a href="/dashboard/economics" class="nav-link {% if active_page == 'economics' %}active{% endif %}">Economic Comparison</a>
-    <a href="/dashboard/sizing" class="nav-link {% if active_page == 'sizing' %}active{% endif %}">Sizing Matrix</a>
-    <a href="/dashboard/sensitivity" class="nav-link {% if active_page == 'sensitivity' %}active{% endif %}">Sensitivity</a>
-    <a href="/dashboard/assumptions" class="nav-link {% if active_page == 'assumptions' %}active{% endif %}">Assumptions &amp; Data</a>
-    <a href="/dashboard/scenarios" class="nav-link {% if active_page == 'scenarios' %}active{% endif %}">Saved Scenarios</a>
-  </nav>
-
-  <!-- Page Content -->
-  <main class="main-container">
-    {% block content %}{% endblock %}
-  </main>
-
-  <footer>
-    Virtual TES Gen0 Engineering Platform &bull; Phase 5.7 Engineering Dashboard &bull;
-    Calculations strictly powered by backend Python models (ThermalStateMapper, HelicalAirHXModel, LP Optimizer)
-  </footer>
-
+  <script>
+    // Live Europe/Vilnius Clock in Top Bar
+    function updateClock() {
+      try {
+        const now = new Date();
+        const options = {
+          timeZone: 'Europe/Vilnius',
+          weekday: 'short',
+          day: 'numeric',
+          month: 'short',
+          hour: '2-digit',
+          minute: '2-digit',
+          hour12: false
+        };
+        const formatter = new Intl.DateTimeFormat('en-GB', options);
+        const clockEl = document.getElementById('topbar-live-clock');
+        if (clockEl) {
+          clockEl.innerText = formatter.format(now);
+        }
+      } catch (e) {
+        // Fallback
+      }
+    }
+    updateClock();
+    setInterval(updateClock, 10000);
+  </script>
   {% block scripts %}{% endblock %}
 </body>
 </html>

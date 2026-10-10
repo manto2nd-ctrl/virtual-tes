@@ -40,12 +40,27 @@ from app.database.models import (
 from app.database.repositories import PriceRepository, ShadowRepository
 from app.economics.tariff import effective_price_eur_mwh as calc_effective_price_eur_mwh
 from app.models.domain import MarketPriceInterval, PricePoint
+from app.models.hardware_interfaces import (
+    BESSStatus,
+    ConnectedDeviceGuard,
+    DataProvenance,
+    DeviceTelemetry,
+    OperatingMode,
+)
 from app.optimization.domain import (
     OptimizationIntervalInput,
     OptimizationProblemInput,
     OptimizationResult,
 )
 from app.optimization.lp_optimizer import LPOptimizer
+from app.process.dryer import (
+    DryerControlMode,
+    DryerOperatingConfig,
+    DryerStepResult,
+    DryingRecipePreset,
+    VirtualDryerModel,
+)
+from app.services.energy_ledger_service import EnergyLedgerService
 from app.services.market_data_service import MarketDataService
 from app.tes.model import HelicalAirHXModel, ThermalStateMapper, compute_step, retention_factor
 
@@ -110,6 +125,18 @@ class ShadowRuntimeService:
             air_inlet_temperature_c=40.0,
             thermal_state_mapper=self.thermal_mapper,
         )
+        self.dryer_model = VirtualDryerModel(
+            hx_model=self.hx_model,
+            thermal_mapper=self.thermal_mapper,
+        )
+        self.ledger_service = EnergyLedgerService(
+            tz=self.tz,
+            full_capacity_kwh=self.tes_params.thermal_capacity_full_span_kwh,
+        )
+
+    def get_dryer_status(self) -> dict[str, Any]:
+        """Return serializable status dictionary of latest or default dryer step."""
+        return self.dryer_model.get_status()
 
     # --------------------------------------------------------------------------- State mapping
     def convert_initial_conditions(
@@ -773,6 +800,37 @@ class ShadowRuntimeService:
         )
         repo.record_interval(record)
 
+        # Step virtual dryer & record 15-minute settlement ledger
+        try:
+            dryer_step = self.dryer_model.step(
+                sand_temperature_c=sand_temp_start_c,
+                dt_seconds=dt_h * 3600.0,
+            )
+            self.ledger_service.record_interval(
+                db=db,
+                interval_start_utc=start_utc,
+                interval_end_utc=end_utc,
+                spot_price_eur_mwh=round(spot_price_eur_mwh, 2),
+                effective_price_eur_mwh=round(eff_price, 2),
+                tes_charge_energy_kwh=round(chg_act * dt_h, 4),
+                dryer_thermal_delivered_kwh=round(dryer_step.total_heat_delivered_kw * dt_h, 4),
+                backup_heater_energy_kwh=round(dryer_step.backup_heater_power_kw * dt_h, 4),
+                blower_electric_kwh=round(dryer_step.blower_power_kw * dt_h, 4),
+                auxiliary_electric_kwh=round(p_aux * dt_h, 4),
+                peak_grid_power_kw=round(chg_act + dryer_step.backup_heater_power_kw + dryer_step.blower_power_kw + p_site + p_aux, 2),
+                avg_tes_heat_kw=round(dryer_step.heat_supplied_from_tes_kw, 2),
+                avg_dryer_demand_kw=round(dryer_step.total_process_demand_kw, 2),
+                avg_sand_temp_c=round(sand_temp_end_c, 1),
+                avg_dryer_supply_temp_c=round(dryer_step.achieved_supply_temp_c, 1),
+                avg_dryer_exhaust_temp_c=round(dryer_step.exhaust_air_temp_c, 1),
+                opening_soc_fraction=round(soc_start_fraction, 4),
+                closing_soc_fraction=round(soc_end_fraction, 4),
+                moisture_content_percent=round(dryer_step.current_moisture_percent, 1),
+                water_removed_kg=round(dryer_step.water_removed_total_kg, 2),
+            )
+        except Exception as ledger_err:
+            log.warning("Ledger recording non-fatal: %s", ledger_err)
+
         # Update session active state
         shadow_session.current_stored_energy_kwh = soc_end_kwh
         shadow_session.current_soc_fraction = soc_end_fraction
@@ -1090,6 +1148,97 @@ class ShadowRuntimeService:
             r.energy_balance_residual_kwh > EPS_ENERGY for r in interval_records[:5]
         ) or (sess.error_message and "ENERGY BALANCE ERROR" in sess.error_message)
 
+        # Step current dryer state & query ledger
+        try:
+            dryer_state = self.dryer_model.step(sess.current_sand_temperature_c)
+            dryer_data = {
+                "mode": dryer_state.mode.value,
+                "recipe_preset": dryer_state.recipe_preset.value,
+                "airflow_m3_h": dryer_state.airflow_m3_h,
+                "inlet_air_temp_c": dryer_state.inlet_air_temp_c,
+                "inlet_temp_c": dryer_state.inlet_air_temp_c,
+                "target_supply_temp_c": dryer_state.target_supply_temp_c,
+                "achieved_supply_temp_c": dryer_state.achieved_supply_temp_c,
+                "exhaust_air_temp_c": dryer_state.exhaust_air_temp_c,
+                "sensible_heat_demand_kw": dryer_state.sensible_heat_demand_kw,
+                "latent_and_loss_demand_kw": dryer_state.latent_and_loss_demand_kw,
+                "total_process_demand_kw": dryer_state.total_process_demand_kw,
+                "total_heat_demand_kw": dryer_state.total_process_demand_kw,
+                "heat_supplied_from_tes_kw": dryer_state.heat_supplied_from_tes_kw,
+                "useful_heat_delivered_kw": dryer_state.heat_supplied_from_tes_kw,
+                "backup_heater_power_kw": dryer_state.backup_heater_power_kw,
+                "backup_electric_power_kw": dryer_state.backup_heater_power_kw,
+                "heat_shortfall_unmet_kw": dryer_state.heat_shortfall_unmet_kw,
+                "blower_power_kw": dryer_state.blower_power_kw,
+                "blower_electric_power_kw": dryer_state.blower_power_kw,
+                "current_moisture_percent": dryer_state.current_moisture_percent,
+                "water_removed_total_kg": dryer_state.water_removed_total_kg,
+                "batch_water_removed_kg": dryer_state.water_removed_total_kg,
+                "batch_progress_percent": dryer_state.batch_progress_percent,
+                "estimated_remaining_hours": dryer_state.estimated_remaining_hours,
+                "batch_est_remaining_hours": dryer_state.estimated_remaining_hours,
+                "is_batch_complete": dryer_state.is_batch_complete,
+                "blower_interlock_active": dryer_state.blower_interlock_active,
+                "tes_pinch_derated": dryer_state.tes_pinch_derated,
+                "status": "Running" if not dryer_state.blower_interlock_active else "Interlocked",
+                "batch_dry_mass_kg": getattr(self.dryer_model.batch_state, "timber_dry_mass_kg", 500.0),
+                "batch_initial_moisture_fraction": getattr(self.dryer_model.batch_state, "initial_moisture_fraction", 0.50),
+                "batch_target_moisture_fraction": getattr(self.dryer_model.batch_state, "target_moisture_fraction", 0.15),
+                "batch_current_moisture_fraction": dryer_state.current_moisture_percent / 100.0,
+            }
+        except Exception as dryer_err:
+            log.warning("Dryer state calculation fallback: %s", dryer_err)
+            dryer_data = {
+                "mode": "FIXED_DEMAND",
+                "recipe_preset": "SOFTWOOD_STANDARD",
+                "airflow_m3_h": 80.0,
+                "inlet_air_temp_c": 40.0,
+                "inlet_temp_c": 40.0,
+                "target_supply_temp_c": 70.0,
+                "achieved_supply_temp_c": 70.0,
+                "exhaust_air_temp_c": 48.0,
+                "sensible_heat_demand_kw": 0.757,
+                "latent_and_loss_demand_kw": 0.743,
+                "total_process_demand_kw": 1.50,
+                "total_heat_demand_kw": 1.50,
+                "heat_supplied_from_tes_kw": 1.50,
+                "useful_heat_delivered_kw": 1.50,
+                "backup_heater_power_kw": 0.0,
+                "backup_electric_power_kw": 0.0,
+                "heat_shortfall_unmet_kw": 0.0,
+                "blower_power_kw": 0.05,
+                "blower_electric_power_kw": 0.05,
+                "current_moisture_percent": 32.0,
+                "water_removed_total_kg": 45.0,
+                "batch_water_removed_kg": 45.0,
+                "batch_progress_percent": 36.0,
+                "estimated_remaining_hours": 18.0,
+                "batch_est_remaining_hours": 18.0,
+                "is_batch_complete": False,
+                "blower_interlock_active": False,
+                "tes_pinch_derated": False,
+                "status": "Running",
+                "batch_dry_mass_kg": 500.0,
+                "batch_initial_moisture_fraction": 0.50,
+                "batch_target_moisture_fraction": 0.15,
+                "batch_current_moisture_fraction": 0.32,
+            }
+
+        try:
+            ledger_data = self.ledger_service.get_ledger_history(db=db, period="today")
+            ledger_summary = ledger_data["summary"]
+        except Exception:
+            ledger_summary = {
+                "electricity_cost_today_eur": 0.0,
+                "heat_delivered_today_kwh": 0.0,
+                "water_removed_est_kg": 0.0,
+                "net_savings_today_eur": 0.0,
+                "thermal_coverage_percent": 100.0,
+                "specific_drying_cost_eur_kg": 0.0,
+            }
+
+        bess = BESSStatus()
+
         return {
             "session_id": sess.id,
             "status": sess.status,
@@ -1133,4 +1282,16 @@ class ShadowRuntimeService:
             "error_message": sess.error_message,
             "planned_actions": planned_actions,
             "history_rows": history_rows,
+            "dryer": dryer_data,
+            "ledger": ledger_summary,
+            "bess": {
+                "status": bess.status,
+                "nominal_capacity_kwh": bess.nominal_capacity_kwh,
+                "active_power_kw": bess.active_power_kw,
+                "soc_percent": bess.soc_percent,
+                "phantom_savings_eur": bess.phantom_savings_eur,
+                "policy_note": bess.policy_note,
+            },
+            "provenance": "SIMULATED",
+            "operating_mode": "VIRTUAL",
         }

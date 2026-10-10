@@ -12,9 +12,15 @@ from datetime import date, datetime, timedelta, timezone
 from typing import Any
 from zoneinfo import ZoneInfo
 from fastapi import APIRouter, Depends, HTTPException, Request
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, Response
 from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
+
+from app.process.dryer import (
+    DryerControlMode,
+    DryerOperatingConfig,
+    DryingRecipePreset,
+)
 
 from app.auth.dependencies import UserSession, get_current_user, require_admin
 from app.backtest.domain import BacktestConfig
@@ -987,4 +993,136 @@ def shadow_history(db: Session = Depends(get_db)):
         }
         for r in records
     ]
+
+
+# --------------------------------------------------------------------------- Virtual Dryer V1 Endpoints
+@api_router.get("/dryer/status")
+def get_dryer_status(db: Session = Depends(get_db)):
+    """Return live dryer step results and timber kinetics."""
+    sess = _shadow_service.get_or_create_session(db)
+    res = _shadow_service.dryer_model.step(sess.current_sand_temperature_c)
+    return {
+        "mode": res.mode.value,
+        "recipe_preset": res.recipe_preset.value,
+        "airflow_m3_h": res.airflow_m3_h,
+        "inlet_air_temp_c": res.inlet_air_temp_c,
+        "target_supply_temp_c": res.target_supply_temp_c,
+        "achieved_supply_temp_c": res.achieved_supply_temp_c,
+        "exhaust_air_temp_c": res.exhaust_air_temp_c,
+        "sand_bed_temp_c": res.sand_bed_temp_c,
+        "sensible_heat_demand_kw": res.sensible_heat_demand_kw,
+        "sensible_air_heat_kw": res.sensible_air_heat_kw,
+        "latent_and_loss_demand_kw": res.latent_and_loss_demand_kw,
+        "total_process_demand_kw": res.total_process_demand_kw,
+        "total_heat_demand_kw": res.total_heat_demand_kw,
+        "heat_supplied_from_tes_kw": res.heat_supplied_from_tes_kw,
+        "useful_heat_delivered_kw": res.useful_heat_delivered_kw,
+        "backup_heater_power_kw": res.backup_heater_power_kw,
+        "heat_shortfall_unmet_kw": res.heat_shortfall_unmet_kw,
+        "total_heat_delivered_kw": res.total_heat_delivered_kw,
+        "blower_power_kw": res.blower_power_kw,
+        "current_moisture_percent": res.current_moisture_percent,
+        "water_removed_total_kg": res.water_removed_total_kg,
+        "batch_progress_percent": res.batch_progress_percent,
+        "estimated_remaining_hours": res.estimated_remaining_hours,
+        "is_batch_complete": res.is_batch_complete,
+        "blower_interlock_active": res.blower_interlock_active,
+        "tes_pinch_derated": res.tes_pinch_derated,
+        "provenance": res.provenance.value,
+    }
+
+
+@api_router.post("/dryer/config")
+async def update_dryer_config(
+    request: Request,
+    _admin: UserSession = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    """Update operating recipe and settings for Virtual Dryer V1. Requires ADMIN role."""
+    content_type = request.headers.get("content-type", "")
+    if "application/json" in content_type:
+        body = await request.json()
+    else:
+        form = await request.form()
+        body = dict(form)
+
+    cfg = _shadow_service.dryer_model.config
+
+    if "recipe_preset" in body and body["recipe_preset"]:
+        preset_val = str(body["recipe_preset"]).upper()
+        try:
+            preset = DryingRecipePreset(preset_val)
+            _shadow_service.dryer_model.apply_recipe(preset)
+        except ValueError:
+            pass
+
+    if "target_supply_temp_c" in body and body["target_supply_temp_c"]:
+        cfg.target_supply_temp_c = float(body["target_supply_temp_c"])
+    if "inlet_air_temp_c" in body and body["inlet_air_temp_c"]:
+        cfg.inlet_air_temp_c = float(body["inlet_air_temp_c"])
+    if "airflow_m3_h" in body and body["airflow_m3_h"]:
+        cfg.airflow_m3_h = float(body["airflow_m3_h"])
+    if "total_process_demand_kw" in body and body["total_process_demand_kw"]:
+        cfg.total_process_demand_kw = float(body["total_process_demand_kw"])
+    elif "total_process_heat_demand_kw" in body and body["total_process_heat_demand_kw"]:
+        cfg.total_process_demand_kw = float(body["total_process_heat_demand_kw"])
+
+    mode_raw = body.get("mode") or body.get("control_mode")
+    if mode_raw:
+        mode_val = str(mode_raw).upper()
+        if mode_val in (DryerControlMode.FIXED_DEMAND.value, DryerControlMode.TARGET_TEMPERATURE.value):
+            cfg.mode = DryerControlMode(mode_val)
+    if "backup_heater_enabled" in body:
+        cfg.backup_heater_enabled = str(body["backup_heater_enabled"]).lower() in ("true", "1", "on", "yes")
+
+    # Sync TES process heat demand with dryer's total demand
+    _shadow_service.update_process_demand(db=db, demand_kw=cfg.total_process_demand_kw)
+
+    sess = _shadow_service.get_or_create_session(db)
+    res = _shadow_service.dryer_model.step(sess.current_sand_temperature_c)
+
+    return {
+        "status": "ok",
+        "message": "Dryer recipe and operating parameters updated successfully.",
+        "config": {
+            "mode": cfg.mode.value,
+            "recipe_preset": cfg.recipe_preset.value,
+            "target_supply_temp_c": cfg.target_supply_temp_c,
+            "inlet_air_temp_c": cfg.inlet_air_temp_c,
+            "airflow_m3_h": cfg.airflow_m3_h,
+            "total_process_demand_kw": cfg.total_process_demand_kw,
+            "backup_heater_enabled": cfg.backup_heater_enabled,
+        },
+        "step_result": {
+            "achieved_supply_temp_c": res.achieved_supply_temp_c,
+            "heat_supplied_from_tes_kw": res.heat_supplied_from_tes_kw,
+            "backup_heater_power_kw": res.backup_heater_power_kw,
+        },
+    }
+
+
+# --------------------------------------------------------------------------- 15-Minute Settlement Ledger Endpoints
+@api_router.get("/ledger/history")
+def get_ledger_history(
+    period: str = "today",
+    db: Session = Depends(get_db),
+):
+    """Return 15-minute settlement ledger history and period economics."""
+    return _shadow_service.ledger_service.get_ledger_history(db=db, period=period)
+
+
+@api_router.get("/ledger/export")
+def export_ledger_csv(
+    period: str = "today",
+    db: Session = Depends(get_db),
+):
+    """Download audit-grade CSV file of 15-minute settlement intervals."""
+    csv_text = _shadow_service.ledger_service.export_csv(db=db, period=period)
+    filename = f"gen0_settlement_ledger_{period}_{datetime.now(timezone.utc).strftime('%Y%m%d')}.csv"
+    return Response(
+        content=csv_text,
+        media_type="text/csv",
+        headers={"Content-Disposition": f"attachment; filename={filename}"},
+    )
+
 

@@ -588,3 +588,49 @@ def page_scenarios(request: Request, db: Session = Depends(get_db)):
         ]
     })
     return templates.TemplateResponse(request=request, name="scenarios.html", context=ctx)
+
+
+@dashboard_router.get("/dryer", response_class=HTMLResponse)
+def page_dryer(request: Request, db: Session = Depends(get_db)):
+    """Dedicated Virtual Dryer V1 Equipment Page."""
+    ctx = get_common_context(request, "dryer")
+    from app.services.shadow_runtime import ShadowRuntimeService
+    shadow_svc = ShadowRuntimeService()
+    ctx["shadow"] = shadow_svc.get_live_dashboard_state(db)
+    ctx["dryer_state"] = shadow_svc.get_dryer_status()
+    ctx["dryer_config"] = shadow_svc.dryer_model.config
+    ctx["runtime_status"] = get_runtime_status_context(db)
+    return templates.TemplateResponse(request=request, name="dryer.html", context=ctx)
+
+
+@dashboard_router.get("/bess", response_class=HTMLResponse)
+def page_bess(request: Request, db: Session = Depends(get_db)):
+    """BESS (Battery Energy Storage System) Equipment Page - Proposed Specification."""
+    ctx = get_common_context(request, "bess")
+    from app.services.shadow_runtime import ShadowRuntimeService
+    shadow_svc = ShadowRuntimeService()
+    ctx["shadow"] = shadow_svc.get_live_dashboard_state(db)
+    ctx["runtime_status"] = get_runtime_status_context(db)
+    return templates.TemplateResponse(request=request, name="bess.html", context=ctx)
+
+
+@dashboard_router.get("/history", response_class=HTMLResponse)
+def page_history(
+    request: Request,
+    range: str = "today",
+    tz_view: str = "Europe/Vilnius",
+    db: Session = Depends(get_db)
+):
+    """15-Minute Settlement Energy Ledger & Savings History."""
+    ctx = get_common_context(request, "history")
+    from app.services.energy_ledger_service import EnergyLedgerService
+    ledger_svc = EnergyLedgerService()
+    ledger_data = ledger_svc.get_ledger_history(db=db, period=range)
+    ctx.update({
+        "range": range,
+        "tz_view": tz_view,
+        "ledger_summary": ledger_data.get("summary", {}),
+        "ledger_intervals": ledger_data.get("intervals", []),
+        "total_intervals": ledger_data.get("total_intervals", 0),
+    })
+    return templates.TemplateResponse(request=request, name="history.html", context=ctx)

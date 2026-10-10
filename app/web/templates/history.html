@@ -1,0 +1,163 @@
+{% extends "base.html" %}
+
+{% block title %}History & Savings - GEN0 Energy Manager{% endblock %}
+{% block page_header %}History &amp; Savings Ledger{% endblock %}
+{% block page_subtitle %}15-Minute Settlement Ledger &bull; Inventory-Adjusted Savings vs. Direct Electric Heating{% endblock %}
+
+{% block content %}
+<!-- Top Provenance & Ledger Banner -->
+<div class="engineering-banner">
+  <div>
+    <strong>15-MINUTE SETTLEMENT AUDIT LEDGER:</strong> Aggregates thermal and electrical power flows against Lithuanian Day-Ahead market settlement intervals (Europe/Vilnius display, UTC storage). Direct electric baseline calculates equivalent useful thermal energy delivered at the exact moment of demand.
+  </div>
+  <a href="/api/ledger/export?range={{ range }}&tz_str={{ tz_view }}" class="btn btn-outline btn-sm" download>
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+    Export Audit CSV
+  </a>
+</div>
+
+<!-- FILTER CONTROLS BAR -->
+<div class="card" style="padding: 12px 18px; margin-bottom: 20px;">
+  <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px;">
+    <!-- Range Filter Buttons -->
+    <div style="display: flex; align-items: center; gap: 8px;">
+      <span style="font-size: 0.78rem; font-weight: 600; color: #64748b;">Period Range:</span>
+      <a href="/dashboard/history?range=today&tz_view={{ tz_view }}" class="btn {% if range == 'today' %}btn-primary{% else %}btn-outline{% endif %} btn-sm">Today</a>
+      <a href="/dashboard/history?range=7d&tz_view={{ tz_view }}" class="btn {% if range == '7d' %}btn-primary{% else %}btn-outline{% endif %} btn-sm">Last 7 Days</a>
+      <a href="/dashboard/history?range=30d&tz_view={{ tz_view }}" class="btn {% if range == '30d' %}btn-primary{% else %}btn-outline{% endif %} btn-sm">Last 30 Days</a>
+      <a href="/dashboard/history?range=all&tz_view={{ tz_view }}" class="btn {% if range == 'all' %}btn-primary{% else %}btn-outline{% endif %} btn-sm">All Records</a>
+    </div>
+
+    <!-- Timezone Selector -->
+    <div style="display: flex; align-items: center; gap: 8px;">
+      <span style="font-size: 0.78rem; font-weight: 600; color: #64748b;">Timezone:</span>
+      <span class="badge badge-slate" style="font-size: 0.75rem;">Europe/Vilnius (EET/EEST)</span>
+    </div>
+  </div>
+</div>
+
+<!-- AUDIT SUMMARY KPI CARDS -->
+<div class="kpi-grid">
+  <div class="kpi-card">
+    <div class="kpi-top">
+      <div class="kpi-label">Heat Delivered (Process)</div>
+      <div class="kpi-icon orange">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 2.5z"></path></svg>
+      </div>
+    </div>
+    <div class="kpi-value">
+      {{ "%.2f"|format(ledger_summary.total_heat_delivered_kwh|default(0.0)) }}<span class="kpi-unit">kWh</span>
+    </div>
+    <div class="kpi-sub">Total useful thermal enthalpy</div>
+  </div>
+
+  <div class="kpi-card">
+    <div class="kpi-top">
+      <div class="kpi-label">Operating Electricity Cost</div>
+      <div class="kpi-icon">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon></svg>
+      </div>
+    </div>
+    <div class="kpi-value">
+      &euro;{{ "%.2f"|format(ledger_summary.total_actual_cost_eur|default(0.0)) }}
+    </div>
+    <div class="kpi-sub">TES charge + backup + blower + aux</div>
+  </div>
+
+  <div class="kpi-card">
+    <div class="kpi-top">
+      <div class="kpi-label">Direct Electric Baseline</div>
+      <div class="kpi-icon amber">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>
+      </div>
+    </div>
+    <div class="kpi-value">
+      &euro;{{ "%.2f"|format(ledger_summary.total_baseline_cost_eur|default(0.0)) }}
+    </div>
+    <div class="kpi-sub">Unshifted instantaneous heating</div>
+  </div>
+
+  <div class="kpi-card" style="background: #f0fdf4; border-color: #bbf7d0;">
+    <div class="kpi-top">
+      <div class="kpi-label" style="color: #166534;">Net Savings (Adjusted)</div>
+      <div class="kpi-icon green">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"></polyline></svg>
+      </div>
+    </div>
+    <div class="kpi-value" style="color: #166534;">
+      &euro;{{ "%.2f"|format(ledger_summary.total_net_savings_eur|default(0.0)) }}
+    </div>
+    <div class="kpi-sub" style="color: #166534;">Includes &Delta;V<sub>inv</sub>: &euro;{{ "%.2f"|format(ledger_summary.total_inventory_delta_eur|default(0.0)) }}</div>
+  </div>
+</div>
+
+<!-- 15-MINUTE SETTLEMENT TABLE -->
+<div class="card">
+  <div class="card-header">
+    <h3 class="card-title">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="20" x2="18" y2="10"></line><line x1="12" y1="20" x2="12" y2="4"></line><line x1="6" y1="20" x2="6" y2="14"></line></svg>
+      15-Minute Settlement Interval Records ({{ total_intervals }} intervals)
+    </h3>
+    <span class="badge badge-slate">EUROPEAN POWER SETTLEMENT</span>
+  </div>
+
+  <div class="table-container">
+    <table class="engineering-table">
+      <thead>
+        <tr>
+          <th>Interval Start</th>
+          <th class="num-col">Spot (&euro;/MWh)</th>
+          <th class="num-col">Effective (&euro;/kWh)</th>
+          <th class="num-col">SOC Start &rarr; End</th>
+          <th class="num-col">Sand Temp (&deg;C)</th>
+          <th class="num-col">TES Heat (kW)</th>
+          <th class="num-col">TES Chg (kW)</th>
+          <th class="num-col">Backup (kW)</th>
+          <th class="num-col">Baseline Cost (&euro;)</th>
+          <th class="num-col">Actual Cost (&euro;)</th>
+          <th class="num-col">&Delta;V<sub>inv</sub> (&euro;)</th>
+          <th class="num-col">Net Savings (&euro;)</th>
+          <th>Provenance</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% if ledger_intervals and ledger_intervals|length > 0 %}
+          {% for row in ledger_intervals %}
+          <tr>
+            <td><strong>{{ row.interval_start_local }}</strong></td>
+            <td class="num-col">{{ "%.2f"|format(row.spot_price_eur_mwh|default(0.0)) }}</td>
+            <td class="num-col">{{ "%.4f"|format(row.effective_price_eur_kwh|default(0.0)) }}</td>
+            <td class="num-col">
+              {{ "%.1f"|format((row.soc_start_fraction|default(0.5)) * 100) }}% &rarr; {{ "%.1f"|format((row.soc_end_fraction|default(0.5)) * 100) }}%
+            </td>
+            <td class="num-col">{{ "%.1f"|format(row.sand_temp_end_c|default(197.0)) }}</td>
+            <td class="num-col" style="color: #ea580c; font-weight: 600;">{{ "%.2f"|format(row.heat_delivered_kw|default(0.0)) }}</td>
+            <td class="num-col" style="color: #2563eb;">{{ "%.2f"|format(row.tes_charge_kw|default(0.0)) }}</td>
+            <td class="num-col">{% if row.backup_heater_kw > 0 %}<strong style="color: #d97706;">{{ "%.2f"|format(row.backup_heater_kw) }}</strong>{% else %}0.00{% endif %}</td>
+            <td class="num-col">&euro;{{ "%.3f"|format(row.baseline_direct_electric_cost_eur|default(0.0)) }}</td>
+            <td class="num-col">&euro;{{ "%.3f"|format(row.actual_electricity_cost_eur|default(0.0)) }}</td>
+            <td class="num-col" style="color: {% if row.inventory_value_delta_eur >= 0 %}#16a34a{% else %}#dc2626{% endif %};">
+              &euro;{{ "%.3f"|format(row.inventory_value_delta_eur|default(0.0)) }}
+            </td>
+            <td class="num-col" style="color: #16a34a; font-weight: 700;">
+              &euro;{{ "%.3f"|format(row.net_savings_eur|default(0.0)) }}
+            </td>
+            <td>
+              <span class="badge {% if row.provenance == 'MEASURED' %}badge-green{% elif row.provenance == 'SHADOW_PREDICTED' %}badge-blue{% else %}badge-slate{% endif %}" style="font-size: 0.68rem;">
+                {{ row.provenance }}
+              </span>
+            </td>
+          </tr>
+          {% endfor %}
+        {% else %}
+          <tr>
+            <td colspan="13" style="text-align: center; padding: 24px; color: #64748b;">
+              No interval records found in this range. The settlement ledger automatically records each executed 15-minute period during shadow simulation.
+            </td>
+          </tr>
+        {% endif %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

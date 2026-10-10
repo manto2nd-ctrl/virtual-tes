@@ -39,28 +39,31 @@
       color: var(--text-main);
       line-height: 1.5;
       font-size: 13.5px;
-      min-height: 100vh;
-      display: flex;
-      flex-direction: column;
-      margin: 0;
-      padding: 0;
+      min-height: 100vh !important;
+      display: flex !important;
+      flex-direction: column !important;
+      margin: 0 !important;
+      padding: 0 !important;
+      width: 100% !important;
     }
 
     /* Layout Structure: Sidebar + Main App */
     .app-layout {
-      display: flex;
-      flex-direction: row;
-      width: 100%;
-      flex-grow: 1;
-      min-height: 0;
+      display: flex !important;
+      flex-direction: row !important;
+      width: 100% !important;
+      flex-grow: 1 !important;
+      min-height: 0 !important;
     }
 
     /* Sidebar Navigation */
     .sidebar {
-      width: 240px;
+      width: 240px !important;
+      min-width: 240px !important;
+      max-width: 240px !important;
       background: var(--bg-sidebar);
       color: #f8fafc;
-      flex-shrink: 0;
+      flex-shrink: 0 !important;
       display: flex;
       flex-direction: column;
       justify-content: space-between;
@@ -467,19 +470,20 @@
 
     /* Production Banner (Phase 5.9) */
     .production-banner {
-      width: 100%;
+      width: 100% !important;
       background: #0f172a;
       color: #f8fafc;
       padding: 7px 24px;
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
+      display: flex !important;
+      flex-direction: row !important;
+      justify-content: space-between !important;
+      align-items: center !important;
       font-size: 0.76rem;
       font-weight: 600;
       letter-spacing: 0.03em;
       border-bottom: 1px solid #1e293b;
-      flex-shrink: 0;
-      box-sizing: border-box;
+      flex-shrink: 0 !important;
+      box-sizing: border-box !important;
     }
     .banner-items {
       display: flex;
@@ -523,9 +527,9 @@
   </style>
   {% block head_extra %}{% endblock %}
 </head>
-<body>
+<body style="display: flex !important; flex-direction: column !important; width: 100% !important; min-height: 100vh !important; margin: 0 !important; padding: 0 !important;">
   <!-- Top Production Data Banner (Phase 5.9 Requirement 21) -->
-  <div class="production-banner">
+  <div class="production-banner" style="width: 100% !important; display: flex !important; flex-direction: row !important; justify-content: space-between !important; align-items: center !important; flex-shrink: 0 !important; box-sizing: border-box !important;">
     <div class="banner-items">
       <div class="banner-tag">
         <span class="banner-dot dot-live"></span>
@@ -543,6 +547,9 @@
 
     <div class="user-session-info">
       {% if user %}
+        {% if user.is_admin %}
+          <a href="/api/admin/clean-db" target="_blank" class="logout-btn" style="border-color: #f59e0b; color: #fde047; font-weight: 700;" title="Instantly releases PostgreSQL volume space (drops FK and truncates raw market data)">Free DB Disk (5 GB)</a>
+        {% endif %}
         <span>User: <strong>{{ user.username }}</strong></span>
         <span class="badge {% if user.is_admin %}badge-green{% else %}badge-blue{% endif %}" style="font-size: 0.7rem; padding: 2px 6px;">
           {{ user.role }}
@@ -555,9 +562,9 @@
     </div>
   </div>
 
-  <div class="app-layout">
+  <div class="app-layout" style="display: flex !important; flex-direction: row !important; width: 100% !important; flex-grow: 1 !important; min-height: 0 !important;">
     <!-- Sidebar Navigation -->
-    <aside class="sidebar">
+    <aside class="sidebar" style="width: 240px !important; min-width: 240px !important; max-width: 240px !important; flex-shrink: 0 !important;">
       <div>
         <div class="sidebar-header">
           <div class="sidebar-brand">

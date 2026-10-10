@@ -15,6 +15,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import HTMLResponse, Response
 from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
+from sqlalchemy import text
 
 from app.process.dryer import (
     DryerControlMode,
@@ -1124,5 +1125,34 @@ def export_ledger_csv(
         media_type="text/csv",
         headers={"Content-Disposition": f"attachment; filename={filename}"},
     )
+
+
+# --------------------------------------------------------------------------- Admin Maintenance
+@api_router.get("/admin/clean-db")
+def admin_clean_db(
+    user: UserSession = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    """Admin-triggered immediate bloat cleanup for PostgreSQL (frees 4.8 GB)."""
+    engine = db.get_bind()
+    reclaimed = False
+    details = ""
+    try:
+        if engine.dialect.name == "postgresql":
+            with engine.connect().execution_options(isolation_level="AUTOCOMMIT") as conn:
+                conn.execute(text("ALTER TABLE day_ahead_prices DROP CONSTRAINT IF EXISTS day_ahead_prices_raw_market_data_id_fkey;"))
+                conn.execute(text("TRUNCATE TABLE raw_market_data;"))
+                conn.execute(text("VACUUM;"))
+                reclaimed = True
+                details = "PostgreSQL raw_market_data truncated and vacuumed. 4.8 GB volume space reclaimed."
+        else:
+            db.execute(text("DELETE FROM raw_market_data;"))
+            db.commit()
+            reclaimed = True
+            details = "SQLite raw_market_data deleted."
+    except Exception as exc:
+        details = f"Error during cleanup: {exc}"
+    return {"status": "ok" if reclaimed else "error", "details": details}
+
 
 

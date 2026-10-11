@@ -784,35 +784,75 @@ class MarketDataService:
             from app.services.energy_system_state import get_energy_system_state
             sys_st = get_energy_system_state(db=session, now_utc=now_utc)
             cmd = sys_st.action_type
+            act_price = round(cur_price, 2) if cur_price is not None else sys_st.spot_price_eur_mwh
+            act_reason_code = sys_st.action_reason_code
+            act_reason_text = sys_st.action_reason_text
+
+            if (act_reason_code in ("DEFAULT_INITIALIZED", "INITIALIZED", "OPTIMIZED_DISPATCH") or session is None) and intervals and cur_iv is not None:
+                future_prices = [it.price_eur_mwh for it in intervals if it.start_utc > now_utc]
+                future_avg = sum(future_prices) / len(future_prices) if future_prices else (cur_price or 0.0)
+                r_code, r_text = resolve_tes_action_reason(
+                    command=cmd if cmd in ("CHARGE", "DISCHARGE") else "HOLD",
+                    requested_kw=sys_st.heater_requested_kw,
+                    actual_kw=sys_st.heater_actual_kw,
+                    soc_percent=sys_st.soc_percent,
+                    sand_temp_c=sys_st.sand_temperature_c,
+                    hx_max_available_kw=sys_st.hx_max_power_kw,
+                    process_demand_kw=sys_st.dryer_heat_demand_kw,
+                    grid_total_kw=sys_st.grid_import_kw,
+                    grid_connection_limit_kw=sys_st.grid_connection_limit_kw,
+                    current_price_eur_mwh=cur_price or 0.0,
+                    future_avg_price_eur_mwh=future_avg,
+                    has_market_data=True,
+                )
+                act_reason_code = r_code
+                act_reason_text = r_text
+
             tes_action = {
                 "status": sys_st.session_status,
                 "interval_str": sys_st.interval_local_str,
-                "price_eur_mwh": sys_st.spot_price_eur_mwh,
+                "price_eur_mwh": act_price,
                 "soc_percent": sys_st.soc_percent,
                 "soc_kwh": sys_st.stored_energy_kwh,
                 "sand_temperature_c": sys_st.sand_temperature_c,
                 "command": cmd,
                 "requested_kw": sys_st.heater_requested_kw,
                 "actual_kw": sys_st.heater_actual_kw,
-                "reason_code": sys_st.action_reason_code,
-                "reason_text": sys_st.action_reason_text,
+                "reason_code": act_reason_code,
+                "reason_text": act_reason_text,
             }
         except Exception as shadow_err:
             log.warning("Could not calculate active TES action via EnergySystemState: %s", shadow_err)
 
         if tes_action is None:
+            future_prices = [it.price_eur_mwh for it in intervals if it.start_utc > now_utc] if intervals else []
+            future_avg = sum(future_prices) / len(future_prices) if future_prices else (cur_price or 0.0)
+            r_code, r_text = resolve_tes_action_reason(
+                command="HOLD",
+                requested_kw=0.0,
+                actual_kw=0.0,
+                soc_percent=100.0,
+                sand_temp_c=300.0,
+                hx_max_available_kw=2.79,
+                process_demand_kw=1.5,
+                grid_total_kw=2.05,
+                grid_connection_limit_kw=12.0,
+                current_price_eur_mwh=cur_price or 0.0,
+                future_avg_price_eur_mwh=future_avg,
+                has_market_data=bool(intervals),
+            )
             tes_action = {
                 "status": "ACTIVE",
                 "interval_str": interval_str,
-                "price_eur_mwh": cur_price or 0.0,
+                "price_eur_mwh": round(cur_price, 2) if cur_price is not None else 0.0,
                 "soc_percent": 100.0,
                 "soc_kwh": 15.0,
                 "sand_temperature_c": 300.0,
                 "command": "IDLE",
                 "requested_kw": 0.0,
                 "actual_kw": 0.0,
-                "reason_code": "INITIALIZED",
-                "reason_text": "Authoritative session state initialized.",
+                "reason_code": r_code,
+                "reason_text": r_text,
             }
 
         return {

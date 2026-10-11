@@ -701,18 +701,11 @@ class ShadowRuntimeService:
                         req_chg = item.get("charge_kw", 0.0)
                         break
 
-        # Grid connection limit & electrical load balance (TES charging + site + aux + blower + backup)
+        # Grid connection limit & electrical load balance (TES charging + site + aux)
         p_site = self.site_params.other_loads_kw
         p_aux = self.tes_params.auxiliary_power_kw
         p_grid_limit = self.site_params.grid_connection_limit_kw
-
-        # Estimate process electrical loads for headroom allocation
-        blower_running = self.dryer_model.config.blower_enabled and self.dryer_model.config.airflow_m3_h > 0.1
-        p_blower_est = (self.dryer_model.config.blower_rated_power_kw * (self.dryer_model.config.airflow_m3_h / 80.0) ** 2.5) if blower_running else 0.0
-        shortfall_est = max(0.0, p_demand - req_dis)
-        p_backup_est = min(self.dryer_model.config.backup_heater_max_kw, shortfall_est) if (blower_running and self.dryer_model.config.backup_heater_enabled) else 0.0
-        non_tes_load = p_site + p_aux + p_blower_est + p_backup_est
-        headroom = max(0.0, p_grid_limit - non_tes_load)
+        headroom = max(0.0, p_grid_limit - p_site - p_aux)
 
         # Prices & costs
         eff_price = (
@@ -761,7 +754,7 @@ class ShadowRuntimeService:
             interval_cost = elec_consumed_kwh * (eff_price / 1000.0)
             chg_act = step_res.charge_power_kw
             dis_act = step_res.discharge_power_kw
-            grid_total_kw = min(p_grid_limit, chg_act + p_backup_est + p_blower_est + p_site + p_aux)
+            grid_total_kw = min(p_grid_limit, chg_act + p_site + p_aux)
 
             soc_end_kwh = step_res.soc_end_kwh
             soc_end_fraction = soc_end_kwh / self.tes_params.thermal_capacity_full_span_kwh

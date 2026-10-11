@@ -366,7 +366,8 @@ class EnergySystemStateService:
         p_site = self.site_params.other_loads_kw
         p_aux = self.tes_params.auxiliary_power_kw
         p_grid_limit = self.site_params.grid_connection_limit_kw
-        headroom = max(0.0, p_grid_limit - p_site - p_aux - backup_heat - blower_kw)
+        proc_active = bool(sess.process_enabled) if sess is not None else True
+        headroom = max(0.0, p_grid_limit - p_site - p_aux)
 
         if status == "RUNNING":
             act_chg = min(req_chg, self.tes_params.max_charge_power_kw, headroom)
@@ -392,7 +393,7 @@ class EnergySystemStateService:
             reason_text = "Simulation stopped."
 
         curtailed_chg = max(0.0, req_chg - act_chg)
-        total_grid = min(p_grid_limit, act_chg + backup_heat + blower_kw + p_site + p_aux)
+        total_grid = min(p_grid_limit, act_chg + p_site + p_aux)
         unused_margin = max(0.0, p_grid_limit - total_grid)
 
         # 5. Worker Status

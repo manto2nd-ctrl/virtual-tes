@@ -144,12 +144,11 @@
         <div class="card-header" style="margin-bottom: 12px; padding-bottom: 8px;">
           <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
             <h3 class="card-title" style="margin: 0; font-size: 1.05rem;">
+              TES ACTION NOW
               {% if shadow and shadow.status == 'PAUSED' %}
-                PLANNED TES ACTION <span style="font-size: 0.8rem; color: #d97706;">[EXECUTION PAUSED]</span>
+                <span style="font-size: 0.8rem; color: #d97706;">[EXECUTION PAUSED]</span>
               {% elif shadow and shadow.status == 'RUNNING' %}
-                TES EXECUTION NOW
-              {% else %}
-                TES ACTION NOW
+                <span style="font-size: 0.8rem; color: #16a34a;">[RUNNING]</span>
               {% endif %}
             </h3>
             <span class="badge {% if shadow and shadow.status == 'PAUSED' %}badge-amber{% elif (shadow.action_now if shadow else market.tes_action.command) in ['CHARGE', 'CHARGE + SUPPLY PROCESS'] or (shadow and 'CHARGE' in shadow.action_now) %}badge-green{% elif (shadow.action_now if shadow else market.tes_action.command) in ['DISCHARGE', 'SUPPLY PROCESS'] or (shadow and 'SUPPLY' in shadow.action_now) %}badge-blue{% else %}badge-slate{% endif %}">

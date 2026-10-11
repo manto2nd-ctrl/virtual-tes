@@ -1,36 +1,59 @@
 {% extends "base.html" %}
 
 {% block title %}Virtual Dryer V1 - GEN0 Energy Manager{% endblock %}
-{% block page_header %}Dryer Equipment (Virtual V1){% endblock %}
-{% block page_subtitle %}Hot-air convection drying kiln &bull; Physics-coupled thermal extraction with helical air coil{% endblock %}
+{% block page_header %}Dryer Equipment (Virtual V1 &amp; Thermal Test Rig){% endblock %}
+{% block page_subtitle %}Hot-air convection drying kiln &bull; Physics-coupled thermal extraction with helical air coil &bull; Phase 5.11 Validation{% endblock %}
 
 {% block content %}
 <!-- Provenance Notice -->
 <div class="engineering-banner">
   <div>
-    <strong>SIMULATED EQUIPMENT TWIN:</strong> Connected to real-time TES sand bed thermodynamics (`ThermalStateMapper`, `HelicalAirHXModel`). All kinetics and water evaporation are <em>Simulated Estimates</em> until physical load-cells and psychrometers are commissioned on-site.
+    <strong>SIMULATED EQUIPMENT TWIN:</strong> Connected to real-time TES sand bed thermodynamics (<code>ThermalStateMapper</code>, <code>HelicalAirHXModel</code>). 
+    All drying kinetics and water evaporation are <em>Simulated Estimates</em> on dry basis until calibrated against physical load-cells and psychrometers.
   </div>
   <span class="badge badge-blue">VIRTUAL TWIN</span>
 </div>
+
+<!-- Power Deficit Warning Alert -->
+{% if dryer_state.power_deficit_warning %}
+<div style="background: #fff1f2; border: 1px solid #fecdd3; border-left: 4px solid #e11d48; padding: 14px 18px; border-radius: 6px; margin-bottom: 20px; display: flex; align-items: center; justify-content: space-between; gap: 16px;">
+  <div style="display: flex; align-items: center; gap: 14px;">
+    <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#e11d48" stroke-width="2"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+    <div>
+      <div style="font-weight: 700; color: #9f1239; font-size: 0.92rem; text-transform: uppercase; letter-spacing: 0.5px;">⚠️ Thermal Power Deficit Detected</div>
+      <div style="font-size: 0.84rem; color: #be123c; margin-top: 2px;">
+        {{ dryer_state.warning_message|default('Requested drying duty exceeds combined heating capacity of TES heat exchanger and backup electric heater. Drying rate is physically capped.') }}
+      </div>
+    </div>
+  </div>
+  <span class="badge badge-amber" style="background: #ffe4e6; color: #9f1239; border: 1px solid #fda4af; white-space: nowrap;">RATE CAPPED</span>
+</div>
+{% endif %}
 
 <!-- TOP KPI STATUS ROW -->
 <div class="kpi-grid">
   <div class="kpi-card">
     <div class="kpi-top">
-      <div class="kpi-label">Operating Status</div>
+      <div class="kpi-label">Operating Mode &amp; Status</div>
       <div class="kpi-icon teal">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
       </div>
     </div>
-    <div class="kpi-value" style="color: #0d9488;">
+    <div class="kpi-value" style="color: #0d9488; font-size: 1.35rem;">
       {{ dryer_state.status|default('RUNNING') }}
     </div>
-    <div class="kpi-sub">Control Mode: {{ dryer_state.mode|default('TARGET_TEMPERATURE') }}</div>
+    <div class="kpi-sub">
+      {% if dryer_state.simulation_mode == 'THERMAL_TEST_RIG' %}
+        <span style="color: #0284c7; font-weight: 700;">MODE 1: THERMAL TEST RIG</span> &bull; No Wood
+      {% else %}
+        <span style="color: #d97706; font-weight: 700;">MODE 2: WOOD DRYING</span> &bull; {{ dryer_state.timber_mass_dry_kg|default(50.0)|round(0) }} kg {{ dryer_state.wood_species|default('PINE') }}
+      {% endif %}
+    </div>
   </div>
 
   <div class="kpi-card">
     <div class="kpi-top">
-      <div class="kpi-label">Supply Air Temp</div>
+      <div class="kpi-label">Supply &amp; Timber Temp</div>
       <div class="kpi-icon orange">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 14.76V3.5a2.5 2.5 0 0 0-5 0v11.26a4.5 4.5 0 1 0 5 0z"></path></svg>
       </div>
@@ -38,12 +61,19 @@
     <div class="kpi-value">
       {{ "%.1f"|format(dryer_state.achieved_supply_temp_c|default(70.0)) }}<span class="kpi-unit">&deg;C</span>
     </div>
-    <div class="kpi-sub">Target: {{ "%.1f"|format(dryer_state.target_supply_temp_c|default(70.0)) }} &deg;C &bull; Inlet: {{ "%.1f"|format(dryer_state.inlet_temp_c|default(40.0)) }} &deg;C</div>
+    <div class="kpi-sub">
+      Target: {{ "%.1f"|format(dryer_state.target_supply_temp_c|default(70.0)) }} &deg;C &bull; 
+      {% if dryer_state.simulation_mode == 'WOOD_DRYING_PROCESS' %}
+        Wood: {{ "%.1f"|format(dryer_state.timber_temperature_c|default(59.0)) }} &deg;C
+      {% else %}
+        Inlet: {{ "%.1f"|format(dryer_state.inlet_temp_c|default(40.0)) }} &deg;C
+      {% endif %}
+    </div>
   </div>
 
   <div class="kpi-card">
     <div class="kpi-top">
-      <div class="kpi-label">Heat Delivered (Useful)</div>
+      <div class="kpi-label">Thermal Heat Delivered</div>
       <div class="kpi-icon orange">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 2.5z"></path></svg>
       </div>
@@ -51,20 +81,30 @@
     <div class="kpi-value">
       {{ "%.2f"|format(dryer_state.useful_heat_delivered_kw|default(1.50)) }}<span class="kpi-unit">kW</span>
     </div>
-    <div class="kpi-sub">Demand: {{ "%.2f"|format(dryer_state.total_heat_demand_kw|default(1.50)) }} kW &bull; Shortfall: {{ "%.2f"|format(dryer_state.heat_shortfall_kw|default(0.0)) }} kW</div>
+    <div class="kpi-sub">
+      Sensible Coil: {{ "%.2f"|format(dryer_state.sensible_air_heat_kw|default(0.76)) }} kW &bull; 
+      {% if dryer_state.simulation_mode == 'WOOD_DRYING_PROCESS' %}
+        Evap: {{ "%.2f"|format(dryer_state.evaporation_heat_delivered_kw|default(0.50)) }} kW
+      {% else %}
+        Shortfall: {{ "%.2f"|format(dryer_state.heat_shortfall_kw|default(0.0)) }} kW
+      {% endif %}
+    </div>
   </div>
 
   <div class="kpi-card">
     <div class="kpi-top">
-      <div class="kpi-label">Blower &amp; Backup Power</div>
-      <div class="kpi-icon">
+      <div class="kpi-label">Electricity Consumption</div>
+      <div class="kpi-icon blue">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon></svg>
       </div>
     </div>
     <div class="kpi-value">
       {{ "%.3f"|format(dryer_state.total_electricity_kw|default(0.040)) }}<span class="kpi-unit">kW</span>
     </div>
-    <div class="kpi-sub">Fan: {{ "%.3f"|format(dryer_state.blower_electric_power_kw|default(0.040)) }} kW &bull; Duct Heater: {{ "%.2f"|format(dryer_state.backup_electric_power_kw|default(0.0)) }} kW</div>
+    <div class="kpi-sub">
+      Fan: {{ "%.3f"|format(dryer_state.blower_electric_power_kw|default(0.040)) }} kW &bull; 
+      Duct Boost: {{ "%.2f"|format(dryer_state.backup_electric_power_kw|default(0.0)) }} kW
+    </div>
   </div>
 </div>
 
@@ -75,76 +115,151 @@
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"></rect><line x1="3" y1="9" x2="21" y2="9"></line><line x1="9" y1="21" x2="9" y2="9"></line></svg>
       Thermal &amp; Pneumatic Process Flow
     </h3>
-    <span class="badge badge-slate">80 m&sup3;/h NOMINAL CONVECTION</span>
+    <span class="badge badge-slate">{{ "%.0f"|format(dryer_state.airflow_m3_h|default(80.0)) }} m&sup3;/h NOMINAL CONVECTION</span>
   </div>
 
   <div style="display: flex; align-items: center; justify-content: space-between; overflow-x: auto; padding: 18px 8px; gap: 10px;">
     <!-- Step 1: Blower / Ambient Inlet -->
-    <div style="flex: 1; min-width: 150px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 14px 10px; text-align: center;">
-      <div style="font-size: 0.72rem; font-weight: 700; color: #475569; text-transform: uppercase;">1. Intake Blower</div>
+    <div style="flex: 1; min-width: 160px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 14px 10px; text-align: center;">
+      <div style="font-size: 0.72rem; font-weight: 700; color: #475569; text-transform: uppercase;">1. Intake &amp; Circulation</div>
       <div style="font-size: 1.1rem; font-weight: 800; color: #0f172a; margin: 6px 0;">{{ "%.1f"|format(dryer_state.inlet_temp_c|default(40.0)) }} &deg;C</div>
-      <div style="font-size: 0.72rem; color: #64748b;">Flow: {{ "%.0f"|format(dryer_state.airflow_m3_h|default(80.0)) }} m&sup3;/h</div>
-      <div style="font-size: 0.68rem; color: #94a3b8; margin-top: 4px;">P<sub>fan</sub>: {{ "%.3f"|format(dryer_state.blower_electric_power_kw|default(0.040)) }} kW</div>
+      <div style="font-size: 0.72rem; color: #64748b;">Loop: {{ "%.0f"|format(dryer_state.airflow_m3_h|default(80.0)) }} m&sup3;/h</div>
+      <div style="font-size: 0.68rem; color: #0284c7; margin-top: 4px;">Fresh: {{ "%.1f"|format(dryer_state.fresh_airflow_m3_h|default(12.0)) }} m&sup3;/h ({{ "%.0f"|format((1.0 - dryer_state.recirculation_fraction|default(0.85)) * 100) }}%)</div>
+      <div style="font-size: 0.68rem; color: #94a3b8; margin-top: 2px;">Fan: {{ "%.3f"|format(dryer_state.blower_electric_power_kw|default(0.040)) }} kW</div>
     </div>
 
     <div style="color: #64748b; font-size: 1.2rem; font-weight: bold;">&rarr;</div>
 
     <!-- Step 2: Helical Air Coil Heat Exchanger -->
-    <div style="flex: 1.2; min-width: 170px; background: #fffbeb; border: 1px solid #fde68a; border-radius: 8px; padding: 14px 10px; text-align: center;">
-      <div style="font-size: 0.72rem; font-weight: 700; color: #92400e; text-transform: uppercase;">2. Helical Air Coil (Sand Bed)</div>
+    <div style="flex: 1.2; min-width: 175px; background: #fffbeb; border: 1px solid #fde68a; border-radius: 8px; padding: 14px 10px; text-align: center;">
+      <div style="font-size: 0.72rem; font-weight: 700; color: #92400e; text-transform: uppercase;">2. Helical Air Coil (TES Sand)</div>
       <div style="font-size: 1.1rem; font-weight: 800; color: #b45309; margin: 6px 0;">{{ "%.2f"|format(dryer_state.useful_heat_delivered_kw|default(1.50)) }} kW</div>
       <div style="font-size: 0.72rem; color: #78350f;">Bed Temp: {{ "%.0f"|format(shadow.sand_temperature_c|default(197.0)) }} &deg;C</div>
       <div style="font-size: 0.68rem; color: #b45309; margin-top: 4px;">P<sub>max,HX</sub>: {{ "%.2f"|format(dryer_state.hx_power_limit_kw|default(2.5)) }} kW</div>
+      <div style="font-size: 0.68rem; color: #d97706; margin-top: 2px;">Sensible Air: {{ "%.2f"|format(dryer_state.sensible_air_heat_kw|default(0.76)) }} kW</div>
     </div>
 
     <div style="color: #ea580c; font-size: 1.2rem; font-weight: bold;">&rarr;</div>
 
     <!-- Step 3: Backup Duct Heater (Interlocked) -->
-    <div style="flex: 1; min-width: 150px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 14px 10px; text-align: center;">
+    <div style="flex: 1; min-width: 155px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 14px 10px; text-align: center;">
       <div style="font-size: 0.72rem; font-weight: 700; color: #475569; text-transform: uppercase;">3. Backup Duct Heater</div>
       <div style="font-size: 1.1rem; font-weight: 800; color: #0f172a; margin: 6px 0;">{{ "%.2f"|format(dryer_state.backup_electric_power_kw|default(0.0)) }} kW</div>
       <div style="font-size: 0.72rem; color: #64748b;">
         {% if dryer_state.backup_electric_power_kw > 0 %}<strong style="color: #d97706;">ACTIVE BOOST</strong>{% else %}STANDBY (OFF){% endif %}
       </div>
-      <div style="font-size: 0.68rem; color: #94a3b8; margin-top: 4px;">Airflow Interlocked</div>
+      <div style="font-size: 0.68rem; color: #16a34a; margin-top: 4px;">Airflow Interlocked</div>
+      <div style="font-size: 0.68rem; color: #94a3b8; margin-top: 2px;">Max: 3.00 kW</div>
     </div>
 
     <div style="color: #0d9488; font-size: 1.2rem; font-weight: bold;">&rarr;</div>
 
-    <!-- Step 4: Drying Chamber & Timber Charge -->
-    <div style="flex: 1.3; min-width: 180px; background: #f0fdfa; border: 1px solid #99f6e4; border-radius: 8px; padding: 14px 10px; text-align: center;">
-      <div style="font-size: 0.72rem; font-weight: 700; color: #0f766e; text-transform: uppercase;">4. Kiln Chamber (Timber Charge)</div>
-      <div style="font-size: 1.1rem; font-weight: 800; color: #0f766e; margin: 6px 0;">{{ "%.1f"|format(dryer_state.achieved_supply_temp_c|default(70.0)) }} &deg;C</div>
-      <div style="font-size: 0.72rem; color: #115e59;">Exhaust: {{ "%.1f"|format(dryer_state.exhaust_temp_c|default(48.0)) }} &deg;C</div>
-      <div style="font-size: 0.68rem; color: #0d9488; margin-top: 4px;">Moisture: {{ "%.1f"|format(dryer_state.batch_current_moisture_fraction * 100) }}% ({{ "%.1f"|format(dryer_state.batch_water_removed_kg) }} kg removed)</div>
+    <!-- Step 4: Drying Chamber / Test Rig -->
+    <div style="flex: 1.4; min-width: 200px; background: #f0fdfa; border: 1px solid #99f6e4; border-radius: 8px; padding: 14px 10px; text-align: center;">
+      {% if dryer_state.simulation_mode == 'THERMAL_TEST_RIG' %}
+        <div style="font-size: 0.72rem; font-weight: 700; color: #0369a1; text-transform: uppercase;">4. Test Rig Duct (Sensors)</div>
+        <div style="font-size: 1.1rem; font-weight: 800; color: #0369a1; margin: 6px 0;">{{ "%.1f"|format(dryer_state.achieved_supply_temp_c|default(70.0)) }} &deg;C</div>
+        <div style="font-size: 0.72rem; color: #0284c7;">Exhaust: {{ "%.1f"|format(dryer_state.exhaust_temp_c|default(70.0)) }} &deg;C</div>
+        <div style="font-size: 0.68rem; color: #64748b; margin-top: 4px; font-weight: 600;">PURE THERMAL TEST RIG</div>
+        <div style="font-size: 0.68rem; color: #94a3b8; margin-top: 2px;">Zero Fictitious Moisture</div>
+      {% else %}
+        <div style="font-size: 0.72rem; font-weight: 700; color: #0f766e; text-transform: uppercase;">4. Kiln Chamber (Timber Charge)</div>
+        <div style="font-size: 1.1rem; font-weight: 800; color: #0f766e; margin: 6px 0;">{{ "%.1f"|format(dryer_state.achieved_supply_temp_c|default(70.0)) }} &deg;C</div>
+        <div style="font-size: 0.72rem; color: #115e59;">Exhaust: {{ "%.1f"|format(dryer_state.exhaust_temp_c|default(48.0)) }} &deg;C &bull; Wood: {{ "%.1f"|format(dryer_state.timber_temperature_c|default(59.0)) }} &deg;C</div>
+        <div style="font-size: 0.68rem; color: #0d9488; margin-top: 4px;">Moisture: {{ "%.1f"|format(dryer_state.batch_current_moisture_fraction * 100) }}% ({{ "%.1f"|format(dryer_state.batch_water_removed_kg) }} kg removed)</div>
+        <div style="font-size: 0.68rem; color: #64748b; margin-top: 2px;">Charge: {{ "%.0f"|format(dryer_state.timber_mass_dry_kg|default(50.0)) }} kg {{ dryer_state.wood_species|default('PINE') }}</div>
+      {% endif %}
     </div>
   </div>
 </div>
 
-<!-- TWO COLUMN GRID: OPERATING RECIPE FORM & BATCH KINETICS -->
+<!-- TWO COLUMN GRID: OPERATING RECIPE FORM & BATCH KINETICS / TEST RIG -->
 <div class="grid-2">
-  <!-- Col 1: Editable Operating Recipe Form -->
+  <!-- Col 1: Editable Operating Recipe & Load Form -->
   <div class="card">
     <div class="card-header">
       <h3 class="card-title">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"></path><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path></svg>
-        Operating Recipe &amp; Control Settings
+        Operating Recipe &amp; Rig Configuration
       </h3>
       <span class="badge badge-slate">SUPERVISORY FORM</span>
     </div>
 
-    <!-- Recipe Preset Quick-Select Buttons -->
+    <!-- Mode Selector Tabs -->
+    <div style="margin-bottom: 16px; background: #f1f5f9; padding: 6px; border-radius: 8px; display: flex; gap: 6px;">
+      <button type="button" id="btn-mode-test-rig" class="btn btn-sm {% if dryer_config.simulation_mode.value == 'THERMAL_TEST_RIG' %}btn-primary{% else %}btn-outline{% endif %}" style="flex: 1;" onclick="setSimulationMode('THERMAL_TEST_RIG')">
+        🧪 Mode 1: Thermal Test Rig
+      </button>
+      <button type="button" id="btn-mode-wood-process" class="btn btn-sm {% if dryer_config.simulation_mode.value == 'WOOD_DRYING_PROCESS' %}btn-primary{% else %}btn-outline{% endif %}" style="flex: 1;" onclick="setSimulationMode('WOOD_DRYING_PROCESS')">
+        🌲 Mode 2: Wood Drying Process
+      </button>
+    </div>
+
+    <!-- Mode 2 Experimental Timber Load Presets -->
+    <div id="timber-presets-section" style="margin-bottom: 16px; {% if dryer_config.simulation_mode.value == 'THERMAL_TEST_RIG' %}display: none;{% endif %}">
+      <label class="form-label" style="font-weight: 700; color: #1e293b;">Select Experimental Timber Load Preset:</label>
+      <div style="display: flex; gap: 6px; flex-wrap: wrap;">
+        <button type="button" class="btn btn-outline btn-sm" onclick="applyTimberPreset(5, 50, 15, 6)">🔍 5 kg (Test Piece)</button>
+        <button type="button" class="btn btn-outline btn-sm" onclick="applyTimberPreset(10, 50, 15, 12)">🧪 10 kg (Sample)</button>
+        <button type="button" class="btn btn-outline btn-sm" onclick="applyTimberPreset(25, 50, 15, 24)">📦 25 kg (Small Batch)</button>
+        <button type="button" class="btn btn-outline btn-sm" onclick="applyTimberPreset(50, 50, 15, 48)">🏭 50 kg (Pilot)</button>
+        <button type="button" class="btn btn-outline btn-sm" onclick="applyTimberPreset(500, 50, 15, 149)">🏗️ 500 kg (Full Design)</button>
+      </div>
+    </div>
+
+    <!-- Standard Recipe Preset Buttons -->
     <div style="margin-bottom: 16px;">
-      <label class="form-label">Quick Recipe Preset:</label>
-      <div style="display: flex; gap: 8px; flex-wrap: wrap;">
-        <button type="button" class="btn btn-outline btn-sm" onclick="applyPreset('softwood')">🌲 Softwood (70°C, 80m³/h)</button>
-        <button type="button" class="btn btn-outline btn-sm" onclick="applyPreset('hardwood')">🌳 Hardwood (55°C, 60m³/h)</button>
-        <button type="button" class="btn btn-outline btn-sm" onclick="applyPreset('high_throughput')">⚡ High-Throughput (80°C, 100m³/h)</button>
-        <button type="button" class="btn btn-outline btn-sm" onclick="applyPreset('standby')">⏸ Standby</button>
+      <label class="form-label">Operating Schedule Preset:</label>
+      <div style="display: flex; gap: 6px; flex-wrap: wrap;">
+        <button type="button" class="btn btn-outline btn-sm" onclick="applyRecipePreset('softwood')">🌲 Softwood Standard (70°C, 80m³/h)</button>
+        <button type="button" class="btn btn-outline btn-sm" onclick="applyRecipePreset('hardwood')">🌳 Hardwood Gentle (55°C, 60m³/h)</button>
+        <button type="button" class="btn btn-outline btn-sm" onclick="applyRecipePreset('high_throughput')">⚡ High Throughput (85°C, 100m³/h)</button>
+        <button type="button" class="btn btn-outline btn-sm" onclick="applyRecipePreset('standby')">⏸ Standby</button>
       </div>
     </div>
 
     <form id="dryer-config-form" onsubmit="submitDryerConfig(event)">
+      <input type="hidden" id="simulation_mode" name="simulation_mode" value="{{ dryer_config.simulation_mode.value }}">
+
+      <!-- Timber Attributes (Mode 2) -->
+      <div id="timber-inputs-grid" class="grid-2" style="gap: 12px; margin-bottom: 12px; {% if dryer_config.simulation_mode.value == 'THERMAL_TEST_RIG' %}display: none;{% endif %}">
+        <div class="form-group">
+          <label class="form-label" for="wood_species">Wood Species:</label>
+          <select id="wood_species" name="wood_species" class="form-control">
+            <option value="PINE" {% if dryer_config.wood_species.value == 'PINE' %}selected{% endif %}>Scots Pine (Softwood, FSP ~30%)</option>
+            <option value="SPRUCE" {% if dryer_config.wood_species.value == 'SPRUCE' %}selected{% endif %}>Norway Spruce (Softwood, FSP ~30%)</option>
+            <option value="BIRCH" {% if dryer_config.wood_species.value == 'BIRCH' %}selected{% endif %}>Silver Birch (Hardwood, FSP ~30%)</option>
+            <option value="OAK" {% if dryer_config.wood_species.value == 'OAK' %}selected{% endif %}>European Oak (Hardwood, FSP ~28%)</option>
+          </select>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label" for="timber_mass_dry_kg">Dry Wood Mass (kg):</label>
+          <input type="number" step="0.5" id="timber_mass_dry_kg" name="timber_mass_dry_kg" class="form-control" value="{{ dryer_config.timber_mass_dry_kg }}">
+        </div>
+
+        <div class="form-group">
+          <label class="form-label" for="initial_moisture_percent">Initial Moisture (% dry basis):</label>
+          <input type="number" step="0.5" id="initial_moisture_percent" name="initial_moisture_percent" class="form-control" value="{{ dryer_config.initial_moisture_percent }}">
+        </div>
+
+        <div class="form-group">
+          <label class="form-label" for="target_moisture_percent">Target Moisture (% dry basis):</label>
+          <input type="number" step="0.5" id="target_moisture_percent" name="target_moisture_percent" class="form-control" value="{{ dryer_config.target_moisture_percent }}">
+        </div>
+
+        <div class="form-group">
+          <label class="form-label" for="requested_duration_hours">Target Schedule Duration (hours):</label>
+          <input type="number" step="1" id="requested_duration_hours" name="requested_duration_hours" class="form-control" value="{{ dryer_config.requested_duration_hours }}">
+        </div>
+
+        <div class="form-group">
+          <label class="form-label" for="board_thickness_mm">Board Thickness (mm):</label>
+          <input type="number" step="1" id="board_thickness_mm" name="board_thickness_mm" class="form-control" value="{{ dryer_config.board_thickness_mm }}">
+        </div>
+      </div>
+
+      <!-- Convection & Air Temperature Parameters -->
       <div class="grid-2" style="gap: 12px;">
         <div class="form-group">
           <label class="form-label" for="target_supply_temp_c">Target Supply Temp (&deg;C):</label>
@@ -152,96 +267,211 @@
         </div>
 
         <div class="form-group">
-          <label class="form-label" for="inlet_air_temp_c">Inlet Air Temp (&deg;C):</label>
+          <label class="form-label" for="inlet_air_temp_c">Inlet / Return Air Temp (&deg;C):</label>
           <input type="number" step="0.5" id="inlet_air_temp_c" name="inlet_air_temp_c" class="form-control" value="{{ dryer_config.inlet_air_temp_c }}">
         </div>
       </div>
 
       <div class="grid-2" style="gap: 12px;">
         <div class="form-group">
-          <label class="form-label" for="airflow_m3_h">Airflow (m&sup3;/h):</label>
+          <label class="form-label" for="airflow_m3_h">Total Airflow (m&sup3;/h):</label>
           <input type="number" step="5" id="airflow_m3_h" name="airflow_m3_h" class="form-control" value="{{ dryer_config.airflow_m3_h }}">
         </div>
 
         <div class="form-group">
-          <label class="form-label" for="total_process_heat_demand_kw">Process Heat Demand (kW):</label>
-          <input type="number" step="0.05" id="total_process_heat_demand_kw" name="total_process_heat_demand_kw" class="form-control" value="{{ dryer_config.total_process_heat_demand_kw }}">
+          <label class="form-label" for="recirculation_fraction">Recirculation Fraction (0.0 to 1.0):</label>
+          <input type="number" step="0.05" min="0" max="1" id="recirculation_fraction" name="recirculation_fraction" class="form-control" value="{{ dryer_config.recirculation_fraction }}">
         </div>
       </div>
 
-      <div class="form-group">
-        <label class="form-label" for="control_mode">Demand Control Mode:</label>
-        <select id="control_mode" name="control_mode" class="form-control">
-          <option value="TARGET_TEMPERATURE" {% if dryer_config.control_mode.value == 'TARGET_TEMPERATURE' %}selected{% endif %}>Target Air Temperature Mode (Calculate Sensible + Latent)</option>
-          <option value="FIXED_DEMAND" {% if dryer_config.control_mode.value == 'FIXED_DEMAND' %}selected{% endif %}>Fixed Total Process Demand Mode (1.50 kW Reference)</option>
-        </select>
+      <div class="grid-2" style="gap: 12px;">
+        <div class="form-group">
+          <label class="form-label" for="reference_process_heat_load_kw">Reference Heat Load (kW):</label>
+          <input type="number" step="0.05" id="reference_process_heat_load_kw" name="reference_process_heat_load_kw" class="form-control" value="{{ dryer_config.reference_process_heat_load_kw }}">
+        </div>
+
+        <div class="form-group">
+          <label class="form-label" for="control_mode">Control Mode:</label>
+          <select id="control_mode" name="control_mode" class="form-control">
+            <option value="TARGET_TEMPERATURE" {% if dryer_config.mode.value == 'TARGET_TEMPERATURE' %}selected{% endif %}>Target Air Temp (Calculate Sensible + Latent)</option>
+            <option value="FIXED_DEMAND" {% if dryer_config.mode.value == 'FIXED_DEMAND' %}selected{% endif %}>Fixed Reference Demand (1.50 kW Baseline)</option>
+          </select>
+        </div>
       </div>
 
       <div class="form-group" style="display: flex; align-items: center; gap: 10px; margin-top: 10px;">
         <input type="checkbox" id="backup_heater_enabled" name="backup_heater_enabled" {% if dryer_config.backup_heater_enabled %}checked{% endif %} style="width: 16px; height: 16px;">
-        <label for="backup_heater_enabled" style="font-size: 0.82rem; font-weight: 600;">Enable Backup Electric Duct Heater (Interlocked with Blower)</label>
+        <label for="backup_heater_enabled" style="font-size: 0.82rem; font-weight: 600;">Enable Backup Electric Duct Heater (Interlocked with Airflow)</label>
       </div>
 
-      <div style="margin-top: 16px; display: flex; justify-content: flex-end; gap: 10px;">
-        <button type="submit" class="btn btn-primary">Apply Recipe Changes</button>
+      <div style="margin-top: 16px; display: flex; justify-content: space-between; gap: 10px;">
+        <button type="button" class="btn btn-outline btn-sm" onclick="resetTimberBatch()">🔄 Reset Batch</button>
+        <button type="submit" class="btn btn-primary">Apply Settings</button>
       </div>
       <div id="recipe-save-msg" style="margin-top: 8px; font-size: 0.78rem; text-align: right;"></div>
     </form>
   </div>
 
-  <!-- Col 2: Simulated Timber Batch Kinetics -->
+  <!-- Col 2: Diagnostics & Kinetics Card -->
   <div class="card">
     <div class="card-header">
       <h3 class="card-title">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#854d0e" stroke-width="2"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"></path><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"></path></svg>
-        Simulated Timber Batch Kinetics
+        {% if dryer_state.simulation_mode == 'THERMAL_TEST_RIG' %}
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#0284c7" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>
+          Mode 1: Thermal Test Rig Diagnostics
+        {% else %}
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#854d0e" stroke-width="2"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"></path><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"></path></svg>
+          Mode 2: Timber Drying Kinetics (Dry Basis)
+        {% endif %}
       </h3>
-      <span class="badge badge-amber">ESTIMATE MODEL</span>
+      <span class="badge {% if dryer_state.simulation_mode == 'THERMAL_TEST_RIG' %}badge-blue{% else %}badge-amber{% endif %}">
+        {% if dryer_state.simulation_mode == 'THERMAL_TEST_RIG' %}PURE THERMAL{% else %}ESTIMATE MODEL{% endif %}
+      </span>
     </div>
 
-    <table class="engineering-table">
-      <tr>
-        <td style="color: #64748b;">Dry Wood Mass (Basis):</td>
-        <td class="num-col"><strong>{{ "%.0f"|format(dryer_config.batch_dry_mass_kg) }} kg</strong></td>
-      </tr>
-      <tr>
-        <td style="color: #64748b;">Initial Moisture Content:</td>
-        <td class="num-col">{{ "%.1f"|format(dryer_config.batch_initial_moisture_fraction * 100) }} %</td>
-      </tr>
-      <tr>
-        <td style="color: #64748b;">Target Moisture Content:</td>
-        <td class="num-col">{{ "%.1f"|format(dryer_config.batch_target_moisture_fraction * 100) }} %</td>
-      </tr>
-      <tr>
-        <td style="color: #64748b;">Current Moisture Content:</td>
-        <td class="num-col"><strong style="color: #0284c7; font-size: 1.1rem;">{{ "%.1f"|format(dryer_state.batch_current_moisture_fraction * 100) }} %</strong></td>
-      </tr>
-      <tr>
-        <td style="color: #64748b;">Total Water Mass to Remove:</td>
-        <td class="num-col">{{ "%.1f"|format((dryer_config.batch_initial_moisture_fraction - dryer_config.batch_target_moisture_fraction) * dryer_config.batch_dry_mass_kg) }} kg</td>
-      </tr>
-      <tr>
-        <td style="color: #64748b;">Water Already Removed:</td>
-        <td class="num-col"><strong style="color: #16a34a;">{{ "%.1f"|format(dryer_state.batch_water_removed_kg) }} kg</strong></td>
-      </tr>
-      <tr>
-        <td style="color: #64748b;">Latent Heat of Evaporation:</td>
-        <td class="num-col">2,260 kJ/kg (0.628 kWh/kg)</td>
-      </tr>
-      <tr>
-        <td style="color: #64748b;">Estimated Time to Batch Completion:</td>
-        <td class="num-col"><strong>{{ "%.1f"|format(dryer_state.batch_est_remaining_hours) }} hours</strong></td>
-      </tr>
-    </table>
+    {% if dryer_state.simulation_mode == 'THERMAL_TEST_RIG' %}
+      <!-- MODE 1 DIAGNOSTICS TABLE -->
+      <table class="engineering-table">
+        <tr>
+          <td style="color: #64748b;">Simulation Purpose:</td>
+          <td class="num-col"><strong>Validate Gen0 TES &amp; Helical Coil Duct Heat</strong></td>
+        </tr>
+        <tr>
+          <td style="color: #64748b;">Reference Process Heat Load:</td>
+          <td class="num-col"><strong>{{ "%.2f"|format(dryer_config.reference_process_heat_load_kw|default(1.50)) }} kW</strong></td>
+        </tr>
+        <tr>
+          <td style="color: #64748b;">Sensible Air Heating (C<sub>air</sub> &times; &Delta;T):</td>
+          <td class="num-col"><strong style="color: #d97706;">{{ "%.2f"|format(dryer_state.sensible_air_heat_kw|default(0.76)) }} kW</strong></td>
+        </tr>
+        <tr>
+          <td style="color: #64748b;">Helical HX Capacity (P<sub>max</sub> at sand temp):</td>
+          <td class="num-col">{{ "%.2f"|format(dryer_state.hx_power_limit_kw|default(2.79)) }} kW</td>
+        </tr>
+        <tr>
+          <td style="color: #64748b;">TES Thermal Heat Supplied:</td>
+          <td class="num-col"><strong style="color: #16a34a;">{{ "%.2f"|format(dryer_state.useful_heat_delivered_kw|default(1.50)) }} kW</strong></td>
+        </tr>
+        <tr>
+          <td style="color: #64748b;">Backup Duct Electric Power:</td>
+          <td class="num-col">{{ "%.2f"|format(dryer_state.backup_electric_power_kw|default(0.0)) }} kW</td>
+        </tr>
+        <tr>
+          <td style="color: #64748b;">Thermal Shortfall / Unmet Duty:</td>
+          <td class="num-col">{{ "%.2f"|format(dryer_state.heat_shortfall_kw|default(0.0)) }} kW</td>
+        </tr>
+        <tr>
+          <td style="color: #64748b;">Achieved Supply Air Temp:</td>
+          <td class="num-col"><strong style="color: #0284c7; font-size: 1.1rem;">{{ "%.1f"|format(dryer_state.achieved_supply_temp_c|default(70.0)) }} &deg;C</strong></td>
+        </tr>
+        <tr>
+          <td style="color: #64748b;">Moisture Kinetics:</td>
+          <td class="num-col" style="color: #64748b; font-style: italic;">DISABLED (Zero Fictitious Evaporation)</td>
+        </tr>
+      </table>
 
-    <div style="margin-top: 18px;">
-      <div style="display: flex; justify-content: space-between; font-size: 0.8rem; margin-bottom: 6px;">
-        <span style="font-weight: 600; color: #475569;">Batch Drying Progress:</span>
-        <strong style="color: #16a34a;">{{ "%.1f"|format(dryer_state.batch_progress_percent) }}%</strong>
+      <div style="margin-top: 18px; padding: 12px; background: #f0f9ff; border: 1px solid #bae6fd; border-radius: 6px; font-size: 0.78rem; color: #0369a1;">
+        <strong>Mode 1 Notes:</strong> This test rig configuration verifies sensible heat delivery from the Gen0 quartz sand bed across the helical coil heat exchanger into an instrumented duct without simulating uncalibrated timber evaporation.
       </div>
-      <div class="kpi-bar" style="height: 10px;">
-        <div class="kpi-bar-fill" style="width: {{ dryer_state.batch_progress_percent }}%; background: #16a34a;"></div>
+    {% else %}
+      <!-- MODE 2 TIMBER KINETICS TABLE -->
+      <table class="engineering-table">
+        <tr>
+          <td style="color: #64748b;">Wood Species &amp; Dry Mass:</td>
+          <td class="num-col"><strong>{{ "%.0f"|format(dryer_state.timber_mass_dry_kg|default(50.0)) }} kg {{ dryer_state.wood_species|default('PINE') }}</strong></td>
+        </tr>
+        <tr>
+          <td style="color: #64748b;">Initial &rarr; Target Moisture:</td>
+          <td class="num-col">{{ "%.1f"|format(dryer_config.initial_moisture_percent|default(50.0)) }}% &rarr; {{ "%.1f"|format(dryer_config.target_moisture_percent|default(15.0)) }}% (dry basis)</td>
+        </tr>
+        <tr>
+          <td style="color: #64748b;">Current Timber Moisture:</td>
+          <td class="num-col"><strong style="color: #0284c7; font-size: 1.15rem;">{{ "%.1f"|format(dryer_state.current_moisture_percent|default(35.0)) }}%</strong></td>
+        </tr>
+        <tr>
+          <td style="color: #64748b;">Total Water Mass to Evaporate:</td>
+          <td class="num-col"><strong>{{ "%.1f"|format(dryer_state.timber_mass_dry_kg|default(50.0) * ((dryer_config.initial_moisture_percent|default(50.0) - dryer_config.target_moisture_percent|default(15.0)) / 100.0)) }} kg</strong></td>
+        </tr>
+        <tr>
+          <td style="color: #64748b;">Water Already Evaporated:</td>
+          <td class="num-col"><strong style="color: #16a34a;">{{ "%.1f"|format(dryer_state.batch_water_removed_kg|default(0.0)) }} kg</strong></td>
+        </tr>
+        <tr>
+          <td style="color: #64748b;">Theoretical Evaporation Energy (0.63 kWh/kg):</td>
+          <td class="num-col">{{ "%.1f"|format(dryer_state.timber_mass_dry_kg|default(50.0) * ((dryer_config.initial_moisture_percent|default(50.0) - dryer_config.target_moisture_percent|default(15.0)) / 100.0) * 0.6278) }} kWh</td>
+        </tr>
+        <tr>
+          <td style="color: #64748b;">Sensible Air Heating Duty:</td>
+          <td class="num-col">{{ "%.2f"|format(dryer_state.sensible_air_heat_kw|default(0.76)) }} kW</td>
+        </tr>
+        <tr>
+          <td style="color: #64748b;">Evaporation Heat Delivered:</td>
+          <td class="num-col"><strong style="color: #d97706;">{{ "%.2f"|format(dryer_state.evaporation_heat_delivered_kw|default(0.50)) }} kW</strong></td>
+        </tr>
+        <tr>
+          <td style="color: #64748b;">Ventilation &amp; Chamber Losses:</td>
+          <td class="num-col">{{ "%.2f"|format((dryer_state.ventilation_loss_kw|default(0.12)) + (dryer_state.chamber_loss_kw|default(0.10))) }} kW</td>
+        </tr>
+        <tr>
+          <td style="color: #64748b;">Estimated Time to Completion:</td>
+          <td class="num-col"><strong>{{ "%.1f"|format(dryer_state.batch_est_remaining_hours|default(24.0)) }} hours</strong></td>
+        </tr>
+      </table>
+
+      <div style="margin-top: 18px;">
+        <div style="display: flex; justify-content: space-between; font-size: 0.8rem; margin-bottom: 6px;">
+          <span style="font-weight: 600; color: #475569;">Batch Drying Progress:</span>
+          <strong style="color: #16a34a;">{{ "%.1f"|format(dryer_state.batch_progress_percent|default(0.0)) }}%</strong>
+        </div>
+        <div class="kpi-bar" style="height: 10px;">
+          <div class="kpi-bar-fill" style="width: {{ dryer_state.batch_progress_percent|default(0.0) }}%; background: #16a34a;"></div>
+        </div>
       </div>
+    {% endif %}
+  </div>
+</div>
+
+<!-- DETAILED FIRST LAW THERMAL ENERGY BREAKDOWN CARD -->
+<div class="card" style="margin-top: 20px;">
+  <div class="card-header">
+    <h3 class="card-title">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 14 10"></polyline></svg>
+      First Law Thermal Power Allocation &amp; Conservation Balance
+    </h3>
+    <span class="badge badge-slate">AUDIT GRADE</span>
+  </div>
+
+  <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 14px; padding: 12px 0;">
+    <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 14px;">
+      <div style="font-size: 0.74rem; font-weight: 700; color: #475569; text-transform: uppercase;">1. Sensible Coil Heating</div>
+      <div style="font-size: 1.25rem; font-weight: 800; color: #0f172a; margin: 6px 0;">
+        {{ "%.2f"|format(dryer_state.sensible_air_heat_kw|default(0.76)) }} <span style="font-size: 0.85rem; font-weight: 500;">kW</span>
+      </div>
+      <div style="font-size: 0.72rem; color: #64748b;">C<sub>air</sub> &approx; 25.22 W/K &bull; &Delta;T = 30 K across coil. Satisfied first to heat supply stream.</div>
+    </div>
+
+    <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 14px;">
+      <div style="font-size: 0.74rem; font-weight: 700; color: #475569; text-transform: uppercase;">2. Fresh Ventilation Loss</div>
+      <div style="font-size: 1.25rem; font-weight: 800; color: #0f172a; margin: 6px 0;">
+        {{ "%.2f"|format(dryer_state.ventilation_loss_kw|default(0.12)) }} <span style="font-size: 0.85rem; font-weight: 500;">kW</span>
+      </div>
+      <div style="font-size: 0.72rem; color: #64748b;">Fresh makeup: {{ "%.1f"|format(dryer_state.fresh_airflow_m3_h|default(12.0)) }} m&sup3;/h (15% exhaust bleed at 85% recirculation).</div>
+    </div>
+
+    <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 14px;">
+      <div style="font-size: 0.74rem; font-weight: 700; color: #475569; text-transform: uppercase;">3. Chamber Envelope Loss</div>
+      <div style="font-size: 1.25rem; font-weight: 800; color: #0f172a; margin: 6px 0;">
+        {{ "%.2f"|format(dryer_state.chamber_loss_kw|default(0.10)) }} <span style="font-size: 0.85rem; font-weight: 500;">kW</span>
+      </div>
+      <div style="font-size: 0.72rem; color: #64748b;">UA transmission loss through insulated kiln walls to ambient.</div>
+    </div>
+
+    <div style="background: #fffbeb; border: 1px solid #fde68a; border-radius: 8px; padding: 14px;">
+      <div style="font-size: 0.74rem; font-weight: 700; color: #92400e; text-transform: uppercase;">4. Evaporation Heat Delivery</div>
+      <div style="font-size: 1.25rem; font-weight: 800; color: #b45309; margin: 6px 0;">
+        {{ "%.2f"|format(dryer_state.evaporation_heat_delivered_kw|default(0.50)) }} <span style="font-size: 0.85rem; font-weight: 500;">kW</span>
+      </div>
+      <div style="font-size: 0.72rem; color: #78350f;">Latent heat clamped to available energy budget: P<sub>evap</sub> &times; dt &le; E<sub>budget</sub>.</div>
     </div>
   </div>
 </div>
@@ -249,29 +479,92 @@
 
 {% block scripts %}
 <script>
-  function applyPreset(name) {
+  function setSimulationMode(mode) {
+    document.getElementById('simulation_mode').value = mode;
+    const btnTest = document.getElementById('btn-mode-test-rig');
+    const btnWood = document.getElementById('btn-mode-wood-process');
+    const timberPresets = document.getElementById('timber-presets-section');
+    const timberInputs = document.getElementById('timber-inputs-grid');
+
+    if (mode === 'THERMAL_TEST_RIG') {
+      btnTest.className = 'btn btn-sm btn-primary';
+      btnWood.className = 'btn btn-sm btn-outline';
+      if (timberPresets) timberPresets.style.display = 'none';
+      if (timberInputs) timberInputs.style.display = 'none';
+    } else {
+      btnTest.className = 'btn btn-sm btn-outline';
+      btnWood.className = 'btn btn-sm btn-primary';
+      if (timberPresets) timberPresets.style.display = 'block';
+      if (timberInputs) timberInputs.style.display = 'grid';
+    }
+  }
+
+  function applyTimberPreset(mass, initMc, targMc, hours) {
+    setSimulationMode('WOOD_DRYING_PROCESS');
+    document.getElementById('timber_mass_dry_kg').value = mass;
+    document.getElementById('initial_moisture_percent').value = initMc;
+    document.getElementById('target_moisture_percent').value = targMc;
+    document.getElementById('requested_duration_hours').value = hours;
+  }
+
+  function applyRecipePreset(name) {
     if (name === 'softwood') {
       document.getElementById('target_supply_temp_c').value = 70.0;
       document.getElementById('inlet_air_temp_c').value = 40.0;
       document.getElementById('airflow_m3_h').value = 80.0;
-      document.getElementById('total_process_heat_demand_kw').value = 1.50;
+      document.getElementById('recirculation_fraction').value = 0.85;
+      document.getElementById('reference_process_heat_load_kw').value = 1.50;
       document.getElementById('control_mode').value = 'TARGET_TEMPERATURE';
     } else if (name === 'hardwood') {
       document.getElementById('target_supply_temp_c').value = 55.0;
       document.getElementById('inlet_air_temp_c').value = 35.0;
       document.getElementById('airflow_m3_h').value = 60.0;
-      document.getElementById('total_process_heat_demand_kw').value = 1.20;
+      document.getElementById('recirculation_fraction').value = 0.90;
+      document.getElementById('reference_process_heat_load_kw').value = 1.00;
       document.getElementById('control_mode').value = 'TARGET_TEMPERATURE';
     } else if (name === 'high_throughput') {
-      document.getElementById('target_supply_temp_c').value = 80.0;
+      document.getElementById('target_supply_temp_c').value = 85.0;
       document.getElementById('inlet_air_temp_c').value = 40.0;
       document.getElementById('airflow_m3_h').value = 100.0;
-      document.getElementById('total_process_heat_demand_kw').value = 2.20;
-      document.getElementById('control_mode').value = 'FIXED_DEMAND';
+      document.getElementById('recirculation_fraction').value = 0.80;
+      document.getElementById('reference_process_heat_load_kw').value = 2.50;
+      document.getElementById('control_mode').value = 'TARGET_TEMPERATURE';
     } else if (name === 'standby') {
       document.getElementById('airflow_m3_h').value = 0.0;
-      document.getElementById('total_process_heat_demand_kw').value = 0.0;
+      document.getElementById('reference_process_heat_load_kw').value = 0.0;
       document.getElementById('backup_heater_enabled').checked = false;
+    }
+  }
+
+  async function resetTimberBatch() {
+    const mass = parseFloat(document.getElementById('timber_mass_dry_kg').value) || 50.0;
+    const initMc = parseFloat(document.getElementById('initial_moisture_percent').value) || 50.0;
+    const targMc = parseFloat(document.getElementById('target_moisture_percent').value) || 15.0;
+    const species = document.getElementById('wood_species').value || 'PINE';
+
+    const msgEl = document.getElementById('recipe-save-msg');
+    msgEl.innerHTML = '<span style="color: #64748b;">Resetting batch...</span>';
+
+    try {
+      const resp = await fetch('/api/dryer/reset-batch', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          timber_mass_dry_kg: mass,
+          initial_moisture_percent: initMc,
+          target_moisture_percent: targMc,
+          wood_species: species
+        })
+      });
+      if (resp.ok) {
+        msgEl.innerHTML = '<span style="color: #16a34a; font-weight: 600;">✓ Batch reset successfully! Reloading...</span>';
+        setTimeout(() => location.reload(), 600);
+      } else {
+        const err = await resp.json();
+        msgEl.innerHTML = '<span style="color: #dc2626; font-weight: 600;">Error: ' + (err.detail || 'Reset failed') + '</span>';
+      }
+    } catch (err) {
+      msgEl.innerHTML = '<span style="color: #dc2626; font-weight: 600;">Network error: ' + err.message + '</span>';
     }
   }
 
@@ -281,10 +574,18 @@
     msgEl.innerHTML = '<span style="color: #64748b;">Applying...</span>';
 
     const payload = {
+      simulation_mode: document.getElementById('simulation_mode').value,
+      wood_species: document.getElementById('wood_species') ? document.getElementById('wood_species').value : 'PINE',
+      timber_mass_dry_kg: parseFloat(document.getElementById('timber_mass_dry_kg').value) || 50.0,
+      initial_moisture_percent: parseFloat(document.getElementById('initial_moisture_percent').value) || 50.0,
+      target_moisture_percent: parseFloat(document.getElementById('target_moisture_percent').value) || 15.0,
+      requested_duration_hours: parseFloat(document.getElementById('requested_duration_hours').value) || 48.0,
+      board_thickness_mm: parseFloat(document.getElementById('board_thickness_mm').value) || 32.0,
       target_supply_temp_c: parseFloat(document.getElementById('target_supply_temp_c').value),
       inlet_air_temp_c: parseFloat(document.getElementById('inlet_air_temp_c').value),
       airflow_m3_h: parseFloat(document.getElementById('airflow_m3_h').value),
-      total_process_heat_demand_kw: parseFloat(document.getElementById('total_process_heat_demand_kw').value),
+      recirculation_fraction: parseFloat(document.getElementById('recirculation_fraction').value),
+      reference_process_heat_load_kw: parseFloat(document.getElementById('reference_process_heat_load_kw').value),
       control_mode: document.getElementById('control_mode').value,
       backup_heater_enabled: document.getElementById('backup_heater_enabled').checked
     };
@@ -296,8 +597,8 @@
         body: JSON.stringify(payload)
       });
       if (resp.ok) {
-        msgEl.innerHTML = '<span style="color: #16a34a; font-weight: 600;">✓ Recipe applied successfully! Reloading...</span>';
-        setTimeout(() => location.reload(), 800);
+        msgEl.innerHTML = '<span style="color: #16a34a; font-weight: 600;">✓ Settings applied successfully! Reloading...</span>';
+        setTimeout(() => location.reload(), 600);
       } else {
         const err = await resp.json();
         msgEl.innerHTML = '<span style="color: #dc2626; font-weight: 600;">Error: ' + (err.detail || 'Failed to update') + '</span>';

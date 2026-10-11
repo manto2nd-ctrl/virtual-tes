@@ -116,8 +116,11 @@ class EnergySystemState:
     action_reason_text: str
 
     # 5. Dryer Process & Kinetics
+    dryer_simulation_mode: str
     dryer_operating_mode: str
     dryer_recipe_preset: str
+    dryer_wood_species: str
+    dryer_timber_mass_dry_kg: float
     dryer_heat_demand_kw: float
     dryer_delivered_heat_kw: float
     dryer_backup_heat_kw: float
@@ -126,12 +129,15 @@ class EnergySystemState:
     dryer_target_supply_temp_c: float
     dryer_achieved_supply_temp_c: float
     dryer_exhaust_temp_c: float
+    dryer_timber_temperature_c: float
     dryer_airflow_m3_h: float
     dryer_blower_power_kw: float
     dryer_current_moisture_percent: float
     dryer_water_removed_total_kg: float
     dryer_batch_progress_percent: float
     dryer_estimated_remaining_hours: float
+    dryer_power_deficit_warning: bool
+    dryer_warning_message: str | None
 
     # 6. Electrical Grid & Headroom
     grid_connection_limit_kw: float
@@ -320,8 +326,11 @@ class EnergySystemStateService:
                 available_stored_energy_kwh=avail_usable_energy,
                 discharge_efficiency=self.tes_params.discharge_efficiency,
             )
+            dryer_sim_mode = dryer_step.simulation_mode.value
             dryer_mode = dryer_step.mode.value
             dryer_preset = dryer_step.recipe_preset.value
+            dryer_species = dryer_step.wood_species.value
+            dryer_mass = dryer_step.timber_mass_dry_kg
             dryer_demand = dryer_step.total_process_demand_kw
             hx_delivered = dryer_step.heat_supplied_from_tes_kw
             backup_heat = dryer_step.backup_heater_power_kw
@@ -330,15 +339,21 @@ class EnergySystemStateService:
             target_t = dryer_step.target_supply_temp_c
             achieved_t = dryer_step.achieved_supply_temp_c
             exhaust_t = dryer_step.exhaust_air_temp_c
+            timber_t = dryer_step.timber_temperature_c
             airflow = dryer_step.airflow_m3_h
             blower_kw = dryer_step.blower_power_kw
-            moisture = dryer_step.current_moisture_percent
+            moisture = dryer_step.current_moisture_percent if dryer_step.current_moisture_percent is not None else 0.0
             water_rem = dryer_step.water_removed_total_kg
-            progress = dryer_step.batch_progress_percent
-            rem_hours = dryer_step.estimated_remaining_hours
+            progress = dryer_step.batch_progress_percent if dryer_step.batch_progress_percent is not None else 0.0
+            rem_hours = dryer_step.estimated_remaining_hours if dryer_step.estimated_remaining_hours is not None else 0.0
+            power_deficit_warn = dryer_step.power_deficit_warning
+            warn_msg = dryer_step.warning_message
         except Exception:
+            dryer_sim_mode = "WOOD_DRYING_PROCESS"
             dryer_mode = "FIXED_DEMAND"
             dryer_preset = "SOFTWOOD_STANDARD"
+            dryer_species = "PINE"
+            dryer_mass = 50.0
             dryer_demand = p_demand
             hx_delivered = min(p_demand, hx_max)
             backup_heat = max(0.0, p_demand - hx_delivered)
@@ -347,12 +362,15 @@ class EnergySystemStateService:
             target_t = 70.0
             achieved_t = 70.0
             exhaust_t = 48.0
+            timber_t = 59.0
             airflow = 80.0
             blower_kw = 0.05
             moisture = 32.0
             water_rem = 45.0
             progress = 36.0
             rem_hours = 18.0
+            power_deficit_warn = False
+            warn_msg = None
 
         # 4. Active Dispatch & Grid Balances
         req_chg = 0.0
@@ -464,8 +482,11 @@ class EnergySystemStateService:
             action_type=action_type,
             action_reason_code=latest_reason,
             action_reason_text=reason_text,
+            dryer_simulation_mode=dryer_sim_mode,
             dryer_operating_mode=dryer_mode,
             dryer_recipe_preset=dryer_preset,
+            dryer_wood_species=dryer_species,
+            dryer_timber_mass_dry_kg=round(dryer_mass, 1),
             dryer_heat_demand_kw=round(dryer_demand, 2),
             dryer_delivered_heat_kw=round(hx_delivered, 2),
             dryer_backup_heat_kw=round(backup_heat, 2),
@@ -474,12 +495,15 @@ class EnergySystemStateService:
             dryer_target_supply_temp_c=round(target_t, 1),
             dryer_achieved_supply_temp_c=round(achieved_t, 1),
             dryer_exhaust_temp_c=round(exhaust_t, 1),
+            dryer_timber_temperature_c=round(timber_t, 1),
             dryer_airflow_m3_h=round(airflow, 1),
             dryer_blower_power_kw=round(blower_kw, 3),
             dryer_current_moisture_percent=round(moisture, 1),
             dryer_water_removed_total_kg=round(water_rem, 1),
             dryer_batch_progress_percent=round(progress, 1),
             dryer_estimated_remaining_hours=round(rem_hours, 1),
+            dryer_power_deficit_warning=power_deficit_warn,
+            dryer_warning_message=warn_msg,
             grid_connection_limit_kw=round(p_grid_limit, 2),
             site_load_kw=round(p_site, 2),
             auxiliary_load_kw=round(p_aux, 3),

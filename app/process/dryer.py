@@ -1,66 +1,115 @@
-"""Virtual Dryer V1 Thermodynamic Engine & Timber Kinetics (Phase 5.10).
+"""Virtual Dryer V1 Thermodynamic Engine & Timber Kinetics (Phase 5.11 - Stage 4).
 
 Follows Core Physical Principles:
-1. Strict separation of sensible air heating (m_dot * cp * deltaT) from latent evaporation & losses.
-2. Heat capacity rate of air at nominal conditions (80 m3/h, 40°C inlet):
-   C_air = 25.22 W/K = 0.02522 kW/K. Heating 40°C -> 70°C is ~0.757 kW sensible heat.
-3. Physical coil extraction bounded by HelicalAirHXModel.p_max_at_temperature_kw(T_sand).
-4. Achievable supply air temperature derived directly from available HX heat.
-5. Backup duct electric heater activates only on shortfall; interlocked OFF if blower airflow is 0.
-6. Moisture removal tagged as SIMULATED ESTIMATE.
+1. 1.5 kW is a configurable reference process heat load for Gen0 experiments, NOT a universal requirement.
+2. Two simulation modes:
+   - Mode 1 (Thermal Test Rig): Pure thermal validation of Gen0 TES & helical HX on an instrumented duct.
+     No fictitious moisture removal. Calculates heat delivered, shortages, and achievable air temperatures.
+   - Mode 2 (Wood Drying Process): Simulates real timber batch drying across configurable loads (5 kg, 10 kg,
+     25 kg, 50 kg, 500 kg, Custom), wood species, board thickness, moisture content, ventilation & losses.
+3. Strict separation of sensible air heating (C_air * deltaT) from fresh ventilation loss, chamber losses, and latent evaporation.
+4. Distinguishes total circulation airflow (80 m3/h nominal) from fresh outdoor makeup / exhaust airflow via recirculation fraction.
+   In recirculating operation, heating the entire circulating air stream is NOT repeatedly counted as a fresh ventilation loss.
+5. First Law energy allocation: available heat first meets sensible air heating, then ventilation & chamber losses, then latent evaporation.
+6. Energy conservation: evaporation energy cannot exceed the physically available heat budget.
+7. Moisture mass balance on dry basis: Water removed = Dry_wood_mass * (MC_initial - MC_current).
+8. Theoretical evaporation energy requirement: 175 kg * 0.63 kWh/kg ≈ 110.25 kWh for 500 kg dry wood from 50% to 15%.
+9. Power deficit warning when requested drying duration exceeds available heating capacity.
+10. All drying kinetics are labeled as SIMULATED ESTIMATE until calibrated against physical sensors.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass, field
 from enum import Enum
+import math
 from typing import Any
 
 from app.models.hardware_interfaces import DataProvenance, OperatingMode
 from app.tes.thermal import HelicalAirHXModel, ThermalStateMapper
 
 
+class DryerSimulationMode(str, Enum):
+    """Dryer primary simulation modes."""
+    THERMAL_TEST_RIG = "THERMAL_TEST_RIG"        # Mode 1: Validate Gen0 TES/HX on instrumented duct (no timber)
+    WOOD_DRYING_PROCESS = "WOOD_DRYING_PROCESS"  # Mode 2: Timber batch drying process with moisture kinetics
+
+
 class DryerControlMode(str, Enum):
     """Dryer thermal control modes."""
-    FIXED_DEMAND = "FIXED_DEMAND"            # Fixed total process heat demand (e.g. 1.50 kW)
-    TARGET_TEMPERATURE = "TARGET_TEMPERATURE"  # Target supply temperature drives demand
+    FIXED_DEMAND = "FIXED_DEMAND"              # Fixed reference process heat demand (e.g. 1.50 kW)
+    TARGET_TEMPERATURE = "TARGET_TEMPERATURE"  # Temperature target drives sensible + process demand
+    CALCULATED_PROCESS = "CALCULATED_PROCESS"  # Full multi-component heat calculation (air + vent + loss + evap)
 
 
 class DryingRecipePreset(str, Enum):
     """Standard industrial drying recipes."""
-    SOFTWOOD_STANDARD = "SOFTWOOD_STANDARD"  # 70°C, 80 m3/h, 1.50 kW
-    HARDWOOD_GENTLE = "HARDWOOD_GENTLE"      # 55°C, 60 m3/h, 1.00 kW (slow dry to prevent checking)
-    HIGH_THROUGHPUT = "HIGH_THROUGHPUT"      # 85°C, 100 m3/h, 2.50 kW
-    STANDBY = "STANDBY"                      # 40°C, 20 m3/h, 0.20 kW
+    SOFTWOOD_STANDARD = "SOFTWOOD_STANDARD"  # 70°C, 80 m3/h, 50 kg load, 48h duration
+    HARDWOOD_GENTLE = "HARDWOOD_GENTLE"      # 55°C, 60 m3/h, 50 kg load, 72h duration (gentle to prevent checking)
+    HIGH_THROUGHPUT = "HIGH_THROUGHPUT"      # 85°C, 100 m3/h, 50 kg load, 24h duration
+    STANDBY = "STANDBY"                      # 40°C, 20 m3/h, 0.20 kW idle holding
+
+
+class WoodSpecies(str, Enum):
+    """Wood species with physical drying characteristics."""
+    PINE = "PINE"        # Scots pine (Pinus sylvestris) - standard softwood, rho ~450 kg/m3, FSP=30%
+    SPRUCE = "SPRUCE"    # Norway spruce (Picea abies) - softwood, rho ~420 kg/m3, FSP=30%
+    BIRCH = "BIRCH"      # Silver birch (Betula pendula) - hardwood, rho ~620 kg/m3, FSP=30%
+    OAK = "OAK"          # European oak (Quercus robur) - dense hardwood, rho ~700 kg/m3, FSP=28%, slow diffusion
+
+
+class TimberLoadPreset(str, Enum):
+    """Selectable timber load presets."""
+    LOAD_5KG = "5_KG"       # Small lab specimen test
+    LOAD_10KG = "10_KG"     # Benchtop rig test
+    LOAD_25KG = "25_KG"     # Pilot trial
+    LOAD_50KG = "50_KG"     # Standard experimental batch
+    LOAD_500KG = "500_KG"   # Industrial design scenario
+    CUSTOM = "CUSTOM"       # Custom dry wood mass
 
 
 @dataclass
 class DryerOperatingConfig:
-    """Operating settings for Virtual Dryer V1."""
+    """Operating settings and physical parameters for Virtual Dryer V1."""
+    simulation_mode: DryerSimulationMode = DryerSimulationMode.WOOD_DRYING_PROCESS
     mode: DryerControlMode = DryerControlMode.FIXED_DEMAND
+    recipe_preset: DryingRecipePreset = DryingRecipePreset.SOFTWOOD_STANDARD
+
+    # Mode 1 Experimental Reference Load:
+    reference_process_heat_load_kw: float = 1.50
+    total_process_demand_kw: float = 1.50  # Maintained for backward compatibility
+
+    # Temperatures & Pneumatics:
     target_supply_temp_c: float = 70.0
     inlet_air_temp_c: float = 40.0
+    ambient_temp_c: float = 15.0
     airflow_m3_h: float = 80.0
-    total_process_demand_kw: float = 1.50
     air_density_kg_m3: float = 1.13
     air_cp_kj_kg_k: float = 1.005
 
-    # Backup Duct Electric Heater
+    # Ventilation & Chamber Losses:
+    recirculation_fraction: float = 0.85  # 85% recirculated, 15% fresh air exchange
+    chamber_loss_factor_kw_k: float = 0.004  # UA_chamber ~ 4 W/K
+    chamber_base_loss_kw: float = 0.10      # Base standing conduction loss
+
+    # Backup Duct Electric Heater:
     backup_heater_enabled: bool = True
     backup_heater_max_kw: float = 3.0
 
-    # Blower Fan
+    # Blower Fan:
     blower_enabled: bool = True
-    blower_rated_power_kw: float = 0.05
+    blower_rated_power_kw: float = 0.050
 
-    # Timber Batch Parameters
-    timber_mass_dry_kg: float = 500.0
-    initial_moisture_percent: float = 50.0
-    target_moisture_percent: float = 15.0
+    # Mode 2 Timber Batch Parameters:
+    wood_species: WoodSpecies = WoodSpecies.PINE
+    timber_mass_dry_kg: float = 50.0  # Default to 50 kg experimental batch
+    board_thickness_mm: float = 32.0  # Nominal 32 mm timber boards
+    initial_moisture_percent: float = 50.0  # Dry basis %
+    target_moisture_percent: float = 15.0   # Dry basis %
+    inlet_humidity_percent: float = 60.0    # Ambient RH %
+    requested_duration_hours: float = 48.0  # Requested drying batch duration
+
     latent_heat_evaporation_kwh_kg: float = 0.6278  # ~2260 kJ/kg = 0.6278 kWh/kg
-
-    # Active Recipe
-    recipe_preset: DryingRecipePreset = DryingRecipePreset.SOFTWOOD_STANDARD
 
     @property
     def control_mode(self) -> DryerControlMode:
@@ -86,26 +135,33 @@ class DryerOperatingConfig:
 @dataclass
 class DryerStepResult:
     """Detailed thermodynamic output of a single dryer simulation step."""
-    # Control Mode
+    # Simulation & Control Mode
+    simulation_mode: DryerSimulationMode
     mode: DryerControlMode
     recipe_preset: DryingRecipePreset
 
-    # Airflow & Capacity Rates
-    airflow_m3_h: float
+    # Pneumatics & Airflow Distinction
+    airflow_m3_h: float            # Total circulation airflow
+    fresh_airflow_m3_h: float      # Outdoor makeup & exhaust airflow
+    recirculation_fraction: float  # Fraction recirculated in chamber
     air_mass_flow_kg_s: float
-    heat_capacity_rate_kw_k: float  # C_air (kW/K)
+    heat_capacity_rate_kw_k: float # C_air (kW/K)
 
     # Temperatures (°C)
     inlet_air_temp_c: float
     target_supply_temp_c: float
     achieved_supply_temp_c: float
     exhaust_air_temp_c: float
+    timber_temperature_c: float
     sand_bed_temp_c: float
 
-    # Heat Balances (kW)
-    sensible_heat_demand_kw: float
-    latent_and_loss_demand_kw: float
-    total_process_demand_kw: float
+    # Heat Demand Breakdown (kW)
+    sensible_heat_demand_kw: float     # Sensible air heating across coil (C_air * deltaT)
+    ventilation_loss_kw: float         # Fresh makeup air heating loss
+    chamber_loss_kw: float             # Envelope conductive loss
+    latent_and_loss_demand_kw: float   # Non-sensible total demand
+    evaporation_heat_demand_kw: float  # Kinetic latent evaporation requirement
+    total_process_demand_kw: float     # Total required process heat
 
     # Thermal Deliveries (kW)
     hx_max_available_kw: float
@@ -113,24 +169,32 @@ class DryerStepResult:
     backup_heater_power_kw: float
     heat_shortfall_unmet_kw: float
     total_heat_delivered_kw: float
+    evaporation_heat_delivered_kw: float
 
     # Electrical Consumption (kW)
     blower_power_kw: float
     total_parasitic_electric_kw: float
 
-    # Batch Progress (Simulated Estimate)
-    current_moisture_percent: float
+    # Batch Kinetics (Mode 2: Wood Drying Process)
+    timber_mass_dry_kg: float
+    wood_species: WoodSpecies
+    current_moisture_percent: float | None
+    water_removed_step_kg: float
     water_removed_total_kg: float
-    batch_progress_percent: float
-    estimated_remaining_hours: float
+    batch_progress_percent: float | None
+    estimated_remaining_hours: float | None
     is_batch_complete: bool
+    thermal_energy_per_kg_water_kwh: float | None
 
-    # Alarms & Status
+    # Alarms, Interlocks & Warnings
     blower_interlock_active: bool
     tes_pinch_derated: bool
+    power_deficit_warning: bool
+    warning_message: str | None = None
     alarms: list[str] = field(default_factory=list)
     provenance: DataProvenance = DataProvenance.SIMULATED
 
+    # Backward Compatibility Properties
     @property
     def sensible_air_heat_kw(self) -> float:
         return self.sensible_heat_demand_kw
@@ -165,7 +229,7 @@ class DryerStepResult:
 
     @property
     def batch_current_moisture_fraction(self) -> float:
-        return self.current_moisture_percent / 100.0
+        return (self.current_moisture_percent / 100.0) if self.current_moisture_percent is not None else 0.0
 
     @property
     def batch_initial_moisture_fraction(self) -> float:
@@ -181,11 +245,11 @@ class DryerStepResult:
 
     @property
     def batch_est_remaining_hours(self) -> float:
-        return self.estimated_remaining_hours
+        return self.estimated_remaining_hours if self.estimated_remaining_hours is not None else 0.0
 
     @property
     def batch_dry_mass_kg(self) -> float:
-        return 500.0
+        return self.timber_mass_dry_kg
 
     @property
     def hx_power_limit_kw(self) -> float:
@@ -197,7 +261,7 @@ class DryerStepResult:
 
 
 class VirtualDryerModel:
-    """Virtual Dryer V1 physical simulator and batch kinetics tracker."""
+    """Virtual Dryer V1 physical simulator supporting Mode 1 (Thermal Test Rig) & Mode 2 (Wood Drying Process)."""
 
     def __init__(
         self,
@@ -215,38 +279,78 @@ class VirtualDryerModel:
             thermal_state_mapper=self.thermal_mapper,
         )
 
+        # Cumulative tracking
+        self.water_removed_cumulative_kg = 0.0
+        self.cumulative_thermal_kwh = 0.0
+        self.cumulative_electric_kwh = 0.0
+
         # Batch state tracking
-        self.current_water_mass_kg = (
-            self.config.timber_mass_dry_kg * (self.config.initial_moisture_percent / 100.0)
+        self.reset_batch(
+            timber_mass_dry_kg=self.config.timber_mass_dry_kg,
+            initial_moisture_percent=self.config.initial_moisture_percent,
+            target_moisture_percent=self.config.target_moisture_percent,
         )
-        self.target_water_mass_kg = (
-            self.config.timber_mass_dry_kg * (self.config.target_moisture_percent / 100.0)
-        )
+
+    def reset_batch(
+        self,
+        timber_mass_dry_kg: float | None = None,
+        initial_moisture_percent: float | None = None,
+        target_moisture_percent: float | None = None,
+        wood_species: WoodSpecies | None = None,
+    ) -> None:
+        """Reset timber batch moisture states for Mode 2."""
+        if wood_species is not None:
+            self.config.wood_species = wood_species
+        if timber_mass_dry_kg is not None:
+            self.config.timber_mass_dry_kg = float(timber_mass_dry_kg)
+        if initial_moisture_percent is not None:
+            self.config.initial_moisture_percent = float(initial_moisture_percent)
+        if target_moisture_percent is not None:
+            self.config.target_moisture_percent = float(target_moisture_percent)
+
+        m_dry = self.config.timber_mass_dry_kg
+        init_mc = self.config.initial_moisture_percent / 100.0
+        targ_mc = self.config.target_moisture_percent / 100.0
+
+        self.current_water_mass_kg = m_dry * init_mc
+        self.target_water_mass_kg = m_dry * targ_mc
         self.total_water_to_remove_kg = max(0.0, self.current_water_mass_kg - self.target_water_mass_kg)
         self.water_removed_cumulative_kg = 0.0
+        self.cumulative_thermal_kwh = 0.0
+        self.cumulative_electric_kwh = 0.0
 
     def apply_recipe(self, preset: DryingRecipePreset) -> None:
         """Apply a standard drying recipe preset."""
         self.config.recipe_preset = preset
         if preset == DryingRecipePreset.SOFTWOOD_STANDARD:
+            self.config.wood_species = WoodSpecies.PINE
             self.config.target_supply_temp_c = 70.0
             self.config.airflow_m3_h = 80.0
             self.config.total_process_demand_kw = 1.50
+            self.config.reference_process_heat_load_kw = 1.50
             self.config.target_moisture_percent = 15.0
+            self.config.requested_duration_hours = 48.0
         elif preset == DryingRecipePreset.HARDWOOD_GENTLE:
+            self.config.wood_species = WoodSpecies.OAK
             self.config.target_supply_temp_c = 55.0
             self.config.airflow_m3_h = 60.0
             self.config.total_process_demand_kw = 1.00
+            self.config.reference_process_heat_load_kw = 1.00
             self.config.target_moisture_percent = 12.0
+            self.config.requested_duration_hours = 72.0
         elif preset == DryingRecipePreset.HIGH_THROUGHPUT:
+            self.config.wood_species = WoodSpecies.SPRUCE
             self.config.target_supply_temp_c = 85.0
             self.config.airflow_m3_h = 100.0
             self.config.total_process_demand_kw = 2.50
+            self.config.reference_process_heat_load_kw = 2.50
             self.config.target_moisture_percent = 15.0
+            self.config.requested_duration_hours = 24.0
         elif preset == DryingRecipePreset.STANDBY:
             self.config.target_supply_temp_c = 40.0
             self.config.airflow_m3_h = 20.0
             self.config.total_process_demand_kw = 0.20
+            self.config.reference_process_heat_load_kw = 0.20
 
     def calculate_c_air_kw_k(self, airflow_m3_h: float | None = None) -> tuple[float, float]:
         """Compute mass flow rate (kg/s) and heat capacity rate C_air (kW/K)."""
@@ -263,75 +367,142 @@ class VirtualDryerModel:
         available_stored_energy_kwh: float | None = None,
         discharge_efficiency: float = 0.90,
     ) -> DryerStepResult:
-        """Execute a physical simulation step of the dryer given current TES sand temperature.
+        """Execute a physically consistent simulation step of the dryer given current TES sand temperature.
 
         Enforces:
-          P_HX_delivered <= P_HX_available
-          P_HX_delivered <= available stored thermal energy / simulation step
+          1. Blower interlock (if airflow is 0, backup duct heater is locked OFF).
+          2. Distinction of sensible air heating from fresh air ventilation and chamber losses.
+          3. First Law energy allocation: sensible air heating takes priority, remaining heat powers evaporation.
+          4. Evaporation energy cannot exceed physically available heat budget.
+          5. Mode 1 (Thermal Test Rig) skips moisture kinetics (no fictitious drying).
+          6. Mode 2 (Wood Drying Process) simulates material kinetics on dry basis.
         """
         cfg = self.config
         alarms: list[str] = []
+        dt_hours = dt_seconds / 3600.0
 
-        # 1. Blower Interlock check
+        # -----------------------------------------------------------------------
+        # 1. Blower Interlock & Pneumatics
+        # -----------------------------------------------------------------------
         blower_running = cfg.blower_enabled and cfg.airflow_m3_h > 0.1
         if not blower_running:
             alarms.append("BLOWER_STOPPED_AIRFLOW_ZERO")
             m_dot = 0.0
             c_air = 0.0
             blower_kw = 0.0
+            fresh_flow_m3_h = 0.0
         else:
             m_dot, c_air = self.calculate_c_air_kw_k(cfg.airflow_m3_h)
             # Fan power affinity scaling
             blower_kw = cfg.blower_rated_power_kw * (cfg.airflow_m3_h / 80.0) ** 2.5
+            fresh_flow_m3_h = cfg.airflow_m3_h * (1.0 - cfg.recirculation_fraction)
 
-        # 2. Demand calculations: Sensible Air Heating vs. Total Process Demand
+        # -----------------------------------------------------------------------
+        # 2. Demand Breakdown: Sensible Air Heating vs. Process Loads
+        # -----------------------------------------------------------------------
+        delta_t_target = max(0.0, cfg.target_supply_temp_c - cfg.inlet_air_temp_c)
+        nominal_sensible = c_air * delta_t_target  # Sensible air heating across coil
+
         if not blower_running:
             sensible_demand_kw = 0.0
+            ventilation_loss_kw = 0.0
+            chamber_loss_kw = 0.0
+            evap_demand_kw = 0.0
             total_demand_kw = 0.0
             latent_and_loss_kw = 0.0
-        elif cfg.mode == DryerControlMode.TARGET_TEMPERATURE:
-            delta_t_target = max(0.0, cfg.target_supply_temp_c - cfg.inlet_air_temp_c)
-            sensible_demand_kw = c_air * delta_t_target
-            # Base loss + evaporation enthalpy
-            latent_and_loss_kw = max(0.2, cfg.total_process_demand_kw - sensible_demand_kw)
-            total_demand_kw = sensible_demand_kw + latent_and_loss_kw
-        else:
-            # FIXED_DEMAND mode
-            total_demand_kw = cfg.total_process_demand_kw
-            delta_t_target = max(0.0, cfg.target_supply_temp_c - cfg.inlet_air_temp_c)
-            nominal_sensible = c_air * delta_t_target
-            sensible_demand_kw = min(total_demand_kw, nominal_sensible)
-            latent_and_loss_kw = max(0.0, total_demand_kw - sensible_demand_kw)
+            m_evap_kinetic_rate = 0.0
+        elif cfg.simulation_mode == DryerSimulationMode.THERMAL_TEST_RIG:
+            # MODE 1: Thermal Test Rig (Validate Gen0 TES & HX on instrumented duct)
+            ventilation_loss_kw = 0.0
+            chamber_loss_kw = 0.0
+            evap_demand_kw = 0.0
+            m_evap_kinetic_rate = 0.0
 
-        # 3. Physically available coil heat from sand bed
+            if cfg.mode == DryerControlMode.TARGET_TEMPERATURE:
+                sensible_demand_kw = nominal_sensible
+                total_demand_kw = nominal_sensible
+                latent_and_loss_kw = 0.0
+            else:
+                # FIXED_DEMAND / Configured Reference Load (1.50 kW nominal)
+                total_demand_kw = cfg.reference_process_heat_load_kw
+                sensible_demand_kw = min(total_demand_kw, nominal_sensible)
+                latent_and_loss_kw = max(0.0, total_demand_kw - sensible_demand_kw)
+        else:
+            # MODE 2: Wood Drying Process (Timber Charge & Kinetics)
+            sensible_demand_kw = nominal_sensible
+
+            # Fresh makeup air ventilation loss
+            m_dot_fresh = (fresh_flow_m3_h * cfg.air_density_kg_m3) / 3600.0
+            c_air_fresh = m_dot_fresh * cfg.air_cp_kj_kg_k
+            est_exhaust_t = max(cfg.inlet_air_temp_c, cfg.target_supply_temp_c - 20.0)
+            ventilation_loss_kw = c_air_fresh * max(0.0, est_exhaust_t - cfg.ambient_temp_c)
+
+            # Chamber envelope conduction loss
+            est_chamber_avg_t = 0.5 * (cfg.target_supply_temp_c + est_exhaust_t)
+            chamber_loss_kw = cfg.chamber_base_loss_kw + (
+                cfg.chamber_loss_factor_kw_k * max(0.0, est_chamber_avg_t - cfg.ambient_temp_c)
+            )
+
+            # Target drying rate from requested duration
+            water_to_remove_total = max(
+                0.0,
+                cfg.timber_mass_dry_kg * ((cfg.initial_moisture_percent - cfg.target_moisture_percent) / 100.0),
+            )
+            dur_h = max(1.0, cfg.requested_duration_hours)
+            m_evap_rate_req = water_to_remove_total / dur_h  # kg/h required on schedule
+
+            # Species drying diffusion factor
+            fsp = 28.0 if cfg.wood_species == WoodSpecies.OAK else 30.0
+            cur_mc_pct = (self.current_water_mass_kg / cfg.timber_mass_dry_kg) * 100.0 if cfg.timber_mass_dry_kg > 0 else 0.0
+
+            if cur_mc_pct > fsp:
+                k_diffusion = 1.0  # Constant drying rate stage (free capillary water)
+                h_evap = cfg.latent_heat_evaporation_kwh_kg
+            else:
+                # Falling rate stage (bound water diffusion resistance)
+                emc = 8.0  # Equilibrium moisture content approx 8%
+                k_mc = max(0.12, (cur_mc_pct - emc) / max(1.0, fsp - emc))
+                thickness_factor = (32.0 / max(10.0, cfg.board_thickness_mm)) ** 0.5
+                species_factor = 0.80 if cfg.wood_species == WoodSpecies.OAK else 1.0
+                k_diffusion = k_mc * thickness_factor * species_factor
+                h_evap = cfg.latent_heat_evaporation_kwh_kg * (1.0 + 0.18 * ((fsp - cur_mc_pct) / fsp))
+
+            m_evap_kinetic_rate = m_evap_rate_req * k_diffusion  # kg/h
+            evap_demand_kw = m_evap_kinetic_rate * h_evap
+
+            if cfg.mode == DryerControlMode.FIXED_DEMAND:
+                # When in fixed demand mode, bound total by configured setting (1.5 kW reference)
+                total_demand_kw = cfg.total_process_demand_kw
+                sensible_demand_kw = min(total_demand_kw, nominal_sensible)
+                latent_and_loss_kw = max(0.0, total_demand_kw - sensible_demand_kw)
+            else:
+                # Pure physical multi-component process demand
+                total_demand_kw = sensible_demand_kw + ventilation_loss_kw + chamber_loss_kw + evap_demand_kw
+                latent_and_loss_kw = ventilation_loss_kw + chamber_loss_kw + evap_demand_kw
+
+        # -----------------------------------------------------------------------
+        # 3. Available TES Heat Exchanger Power & Delivery
+        # -----------------------------------------------------------------------
         if blower_running and sand_temperature_c > cfg.inlet_air_temp_c:
             hx_max_available_kw = self.hx_model.p_max_at_temperature_kw(sand_temperature_c)
         else:
             hx_max_available_kw = 0.0
 
-        # TES delivered heat: bounded by demand, HX availability, and available stored thermal energy
         if tes_heat_delivered_kw is not None:
             tes_supplied_kw = min(total_demand_kw, hx_max_available_kw, max(0.0, float(tes_heat_delivered_kw)))
         elif available_stored_energy_kwh is not None:
-            dt_h = dt_seconds / 3600.0
-            max_p_energy = (max(0.0, float(available_stored_energy_kwh)) * discharge_efficiency) / dt_h if dt_h > 0 else 0.0
+            max_p_energy = (max(0.0, float(available_stored_energy_kwh)) * discharge_efficiency) / dt_hours if dt_hours > 0 else 0.0
             tes_supplied_kw = min(total_demand_kw, hx_max_available_kw, max_p_energy)
         else:
             tes_supplied_kw = min(total_demand_kw, hx_max_available_kw)
 
         tes_pinch_derated = tes_supplied_kw < total_demand_kw and blower_running
-
         if tes_pinch_derated:
             alarms.append("TES_OUTPUT_DERATED_PINCH")
 
-        # 4. Supply air temperature achieved purely from TES coil
-        if blower_running and c_air > 0:
-            sensible_from_tes = min(sensible_demand_kw, tes_supplied_kw)
-            t_supply_coil = cfg.inlet_air_temp_c + (sensible_from_tes / c_air)
-        else:
-            t_supply_coil = cfg.inlet_air_temp_c
-
-        # 5. Backup electric duct heater (interlocked OFF if blower stopped!)
+        # -----------------------------------------------------------------------
+        # 4. Backup Duct Electric Heater (Airflow Interlocked!)
+        # -----------------------------------------------------------------------
         heat_shortfall_kw = max(0.0, total_demand_kw - tes_supplied_kw)
         if blower_running and cfg.backup_heater_enabled and heat_shortfall_kw > 0.001:
             backup_kw = min(cfg.backup_heater_max_kw, heat_shortfall_kw)
@@ -341,79 +512,152 @@ class VirtualDryerModel:
         unmet_kw = max(0.0, heat_shortfall_kw - backup_kw)
         total_delivered_kw = tes_supplied_kw + backup_kw
 
-        # Final achieved supply temperature after backup heater
+        # Power deficit check
+        total_combined_capacity_kw = hx_max_available_kw + (cfg.backup_heater_max_kw if cfg.backup_heater_enabled else 0.0)
+        required_schedule_duty_kw = (
+            sensible_demand_kw + ventilation_loss_kw + chamber_loss_kw + evap_demand_kw
+            if cfg.simulation_mode == DryerSimulationMode.WOOD_DRYING_PROCESS
+            else total_demand_kw
+        )
+        duty_to_compare = max(total_demand_kw, required_schedule_duty_kw)
+        power_deficit = blower_running and (duty_to_compare > total_combined_capacity_kw + 0.05)
+        warning_msg = None
+        if power_deficit:
+            warning_msg = (
+                f"POWER DEFICIT: Requested drying duty of {cfg.timber_mass_dry_kg:.0f} kg {cfg.wood_species.value} "
+                f"requires {duty_to_compare:.2f} kW thermal power, exceeding combined heating capacity "
+                f"({total_combined_capacity_kw:.2f} kW). Drying will take longer than scheduled."
+            )
+            alarms.append("POWER_DEFICIT_WARNING")
+
+        # -----------------------------------------------------------------------
+        # 5. First Law Energy Allocation & Temperature Distribution
+        # -----------------------------------------------------------------------
+        # Sensible air heating across coil takes priority to establish supply air temperature
         if blower_running and c_air > 0:
-            additional_sensible = min(max(0.0, sensible_demand_kw - sensible_from_tes), backup_kw)
-            t_supply_achieved = min(cfg.target_supply_temp_c, t_supply_coil + (additional_sensible / c_air))
+            sensible_actual = min(sensible_demand_kw, total_delivered_kw)
+            t_supply_achieved = cfg.inlet_air_temp_c + (sensible_actual / c_air)
+            t_supply_achieved = min(cfg.target_supply_temp_c, t_supply_achieved)
         else:
+            sensible_actual = 0.0
             t_supply_achieved = cfg.inlet_air_temp_c
 
-        # 6. Exhaust air temperature (after sensible absorption in chamber)
-        if blower_running and c_air > 0:
-            temp_drop = min(25.0, latent_and_loss_kw / c_air)
-            t_exhaust = max(cfg.inlet_air_temp_c, t_supply_achieved - temp_drop)
+        # Remaining delivered heat allocated to ventilation, chamber losses, and latent evaporation
+        heat_remaining_for_process = max(0.0, total_delivered_kw - sensible_actual)
+
+        if cfg.simulation_mode == DryerSimulationMode.THERMAL_TEST_RIG:
+            # Mode 1: No evaporation
+            evap_delivered_kw = 0.0
+            water_removed_step_kg = 0.0
+            current_mc = None
+            progress_pct = None
+            est_remaining_h = None
+            sec_thermal = None
+            batch_complete = False
+            t_exhaust = t_supply_achieved
+            t_timber = t_supply_achieved
         else:
-            t_exhaust = cfg.inlet_air_temp_c
+            # Mode 2: Wood Drying Process
+            # Losses are met first from remaining heat
+            losses_actual = min(heat_remaining_for_process, ventilation_loss_kw + chamber_loss_kw)
+            heat_avail_for_evap = max(0.0, heat_remaining_for_process - losses_actual)
 
-        # 7. Timber Batch Kinetics (Simulated Estimate)
-        hours_elapsed = dt_seconds / 3600.0
-        # Useful latent energy delivered in kWh
-        useful_latent_kwh = (min(latent_and_loss_kw, total_delivered_kw)) * hours_elapsed
-        water_removed_step_kg = useful_latent_kwh / cfg.latent_heat_evaporation_kwh_kg if useful_latent_kwh > 0 else 0.0
+            # If in FIXED_DEMAND mode with historical 1.5 kW reference:
+            if cfg.mode == DryerControlMode.FIXED_DEMAND:
+                heat_avail_for_evap = min(latent_and_loss_kw, heat_remaining_for_process)
 
-        # Update cumulative removal
-        if self.current_water_mass_kg > self.target_water_mass_kg:
-            self.water_removed_cumulative_kg += min(
-                water_removed_step_kg,
-                self.current_water_mass_kg - self.target_water_mass_kg
-            )
+            # Evaporation cannot exceed physically available heat budget!
+            h_evap_curr = cfg.latent_heat_evaporation_kwh_kg
+            water_rem_budget_kg = (heat_avail_for_evap * dt_hours) / h_evap_curr if heat_avail_for_evap > 0 else 0.0
+            water_rem_kinetic_kg = m_evap_kinetic_rate * dt_hours
+
+            remaining_water_in_wood = max(0.0, self.current_water_mass_kg - self.target_water_mass_kg)
+            water_removed_step_kg = min(water_rem_budget_kg, water_rem_kinetic_kg, remaining_water_in_wood)
+            evap_delivered_kw = (water_removed_step_kg * h_evap_curr) / dt_hours if dt_hours > 0 else 0.0
+
+            # Update batch state
+            self.water_removed_cumulative_kg += water_removed_step_kg
             self.current_water_mass_kg = max(
                 self.target_water_mass_kg,
-                self.current_water_mass_kg - water_removed_step_kg
+                self.current_water_mass_kg - water_removed_step_kg,
             )
 
-        current_mc = (self.current_water_mass_kg / cfg.timber_mass_dry_kg) * 100.0
-        batch_complete = current_mc <= (cfg.target_moisture_percent + 0.1)
+            current_mc = (self.current_water_mass_kg / cfg.timber_mass_dry_kg) * 100.0 if cfg.timber_mass_dry_kg > 0 else 0.0
+            batch_complete = current_mc <= (cfg.target_moisture_percent + 0.05)
 
-        # Progress %
-        if self.total_water_to_remove_kg > 0:
-            progress_pct = min(100.0, (self.water_removed_cumulative_kg / self.total_water_to_remove_kg) * 100.0)
-        else:
-            progress_pct = 100.0
+            if self.total_water_to_remove_kg > 0:
+                progress_pct = min(100.0, (self.water_removed_cumulative_kg / self.total_water_to_remove_kg) * 100.0)
+            else:
+                progress_pct = 100.0
 
-        # Remaining hours estimate
-        water_remaining = max(0.0, self.current_water_mass_kg - self.target_water_mass_kg)
-        hourly_rate = (latent_and_loss_kw / cfg.latent_heat_evaporation_kwh_kg) if latent_and_loss_kw > 0 else 0.0
-        est_remaining_h = round(water_remaining / hourly_rate, 1) if hourly_rate > 0.01 else 0.0
+            # Remaining hours estimate based on actual evaporation rate
+            water_left_to_remove = max(0.0, self.current_water_mass_kg - self.target_water_mass_kg)
+            evap_hourly_rate = (water_removed_step_kg / dt_hours) if dt_hours > 0 else 0.0
+            if batch_complete:
+                est_remaining_h = 0.0
+            elif evap_hourly_rate > 0.005:
+                est_remaining_h = round(water_left_to_remove / evap_hourly_rate, 1)
+            else:
+                est_remaining_h = 999.0
+
+            # Temperatures in chamber
+            if blower_running and c_air > 0:
+                delta_t_evap = evap_delivered_kw / c_air
+                t_exhaust = max(cfg.inlet_air_temp_c, t_supply_achieved - delta_t_evap - 2.0)
+            else:
+                t_exhaust = cfg.inlet_air_temp_c
+
+            t_timber = round(0.5 * (t_supply_achieved + t_exhaust), 1)
+
+            # Specific Energy Consumption (kWh_th / kg water removed)
+            self.cumulative_thermal_kwh += total_delivered_kw * dt_hours
+            if self.water_removed_cumulative_kg > 0.05:
+                sec_thermal = round(self.cumulative_thermal_kwh / self.water_removed_cumulative_kg, 2)
+            else:
+                sec_thermal = round(cfg.latent_heat_evaporation_kwh_kg, 2)
 
         res = DryerStepResult(
+            simulation_mode=cfg.simulation_mode,
             mode=cfg.mode,
             recipe_preset=cfg.recipe_preset,
             airflow_m3_h=cfg.airflow_m3_h if blower_running else 0.0,
+            fresh_airflow_m3_h=round(fresh_flow_m3_h, 1),
+            recirculation_fraction=round(cfg.recirculation_fraction, 2),
             air_mass_flow_kg_s=round(m_dot, 5),
             heat_capacity_rate_kw_k=round(c_air, 5),
             inlet_air_temp_c=round(cfg.inlet_air_temp_c, 1),
             target_supply_temp_c=round(cfg.target_supply_temp_c, 1),
             achieved_supply_temp_c=round(t_supply_achieved, 1),
             exhaust_air_temp_c=round(t_exhaust, 1),
+            timber_temperature_c=round(t_timber, 1),
             sand_bed_temp_c=round(sand_temperature_c, 1),
             sensible_heat_demand_kw=round(sensible_demand_kw, 3),
+            ventilation_loss_kw=round(ventilation_loss_kw, 3),
+            chamber_loss_kw=round(chamber_loss_kw, 3),
             latent_and_loss_demand_kw=round(latent_and_loss_kw, 3),
+            evaporation_heat_demand_kw=round(evap_demand_kw, 3),
             total_process_demand_kw=round(total_demand_kw, 3),
             hx_max_available_kw=round(hx_max_available_kw, 3),
             heat_supplied_from_tes_kw=round(tes_supplied_kw, 3),
             backup_heater_power_kw=round(backup_kw, 3),
             heat_shortfall_unmet_kw=round(unmet_kw, 3),
             total_heat_delivered_kw=round(total_delivered_kw, 3),
+            evaporation_heat_delivered_kw=round(evap_delivered_kw, 3),
             blower_power_kw=round(blower_kw, 3),
             total_parasitic_electric_kw=round(blower_kw + backup_kw, 3),
-            current_moisture_percent=round(current_mc, 1),
-            water_removed_total_kg=round(self.water_removed_cumulative_kg, 1),
-            batch_progress_percent=round(progress_pct, 1),
-            estimated_remaining_hours=est_remaining_h,
+            timber_mass_dry_kg=round(cfg.timber_mass_dry_kg, 1),
+            wood_species=cfg.wood_species,
+            current_moisture_percent=round(current_mc, 1) if current_mc is not None else None,
+            water_removed_step_kg=round(water_removed_step_kg, 4),
+            water_removed_total_kg=round(self.water_removed_cumulative_kg, 2),
+            batch_progress_percent=round(progress_pct, 1) if progress_pct is not None else None,
+            estimated_remaining_hours=est_remaining_h if est_remaining_h is not None else None,
             is_batch_complete=batch_complete,
+            thermal_energy_per_kg_water_kwh=sec_thermal,
             blower_interlock_active=not blower_running,
             tes_pinch_derated=tes_pinch_derated,
+            power_deficit_warning=power_deficit,
+            warning_message=warning_msg,
             alarms=alarms,
             provenance=DataProvenance.SIMULATED,
         )
@@ -428,21 +672,31 @@ class VirtualDryerModel:
             self._latest_result = res
         return {
             "status": res.status,
+            "simulation_mode": res.simulation_mode.value,
             "mode": res.mode.value,
             "recipe_preset": res.recipe_preset.value,
+            "wood_species": res.wood_species.value,
+            "timber_mass_dry_kg": res.timber_mass_dry_kg,
             "target_supply_temp_c": res.target_supply_temp_c,
             "inlet_temp_c": res.inlet_air_temp_c,
             "achieved_supply_temp_c": res.achieved_supply_temp_c,
             "exhaust_temp_c": res.exhaust_air_temp_c,
+            "timber_temperature_c": res.timber_temperature_c,
             "sand_bed_temp_c": res.sand_bed_temp_c,
             "airflow_m3_h": res.airflow_m3_h,
+            "fresh_airflow_m3_h": res.fresh_airflow_m3_h,
+            "recirculation_fraction": res.recirculation_fraction,
             "sensible_air_heat_kw": res.sensible_air_heat_kw,
+            "ventilation_loss_kw": res.ventilation_loss_kw,
+            "chamber_loss_kw": res.chamber_loss_kw,
             "latent_and_losses_kw": res.latent_and_losses_kw,
+            "evaporation_heat_demand_kw": res.evaporation_heat_demand_kw,
             "total_heat_demand_kw": res.total_heat_demand_kw,
             "hx_power_limit_kw": res.hx_power_limit_kw,
             "useful_heat_delivered_kw": res.useful_heat_delivered_kw,
             "backup_electric_power_kw": res.backup_electric_power_kw,
             "heat_shortfall_kw": res.heat_shortfall_kw,
+            "evaporation_heat_delivered_kw": res.evaporation_heat_delivered_kw,
             "blower_electric_power_kw": res.blower_electric_power_kw,
             "total_electricity_kw": res.total_electricity_kw,
             "batch_dry_mass_kg": res.batch_dry_mass_kg,
@@ -453,8 +707,11 @@ class VirtualDryerModel:
             "batch_progress_percent": res.batch_progress_percent,
             "batch_est_remaining_hours": res.batch_est_remaining_hours,
             "is_batch_complete": res.is_batch_complete,
+            "thermal_energy_per_kg_water_kwh": res.thermal_energy_per_kg_water_kwh,
             "blower_interlock_active": res.blower_interlock_active,
             "tes_pinch_derated": res.tes_pinch_derated,
+            "power_deficit_warning": res.power_deficit_warning,
+            "warning_message": res.warning_message,
             "alarms": res.alarms,
             "provenance": res.provenance.value,
         }

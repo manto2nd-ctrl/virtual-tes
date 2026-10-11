@@ -20,7 +20,10 @@ from sqlalchemy import text
 from app.process.dryer import (
     DryerControlMode,
     DryerOperatingConfig,
+    DryerSimulationMode,
     DryingRecipePreset,
+    TimberLoadPreset,
+    WoodSpecies,
 )
 
 from app.auth.dependencies import UserSession, get_current_user, require_admin
@@ -1046,32 +1049,57 @@ def get_dryer_status(db: Session = Depends(get_db)):
     sess = _shadow_service.get_or_create_session(db)
     res = _shadow_service.dryer_model.step(sess.current_sand_temperature_c)
     return {
+        "status": res.status,
+        "simulation_mode": res.simulation_mode.value,
         "mode": res.mode.value,
         "recipe_preset": res.recipe_preset.value,
+        "wood_species": res.wood_species.value,
+        "timber_mass_dry_kg": res.timber_mass_dry_kg,
         "airflow_m3_h": res.airflow_m3_h,
+        "fresh_airflow_m3_h": res.fresh_airflow_m3_h,
+        "recirculation_fraction": res.recirculation_fraction,
         "inlet_air_temp_c": res.inlet_air_temp_c,
         "target_supply_temp_c": res.target_supply_temp_c,
         "achieved_supply_temp_c": res.achieved_supply_temp_c,
         "exhaust_air_temp_c": res.exhaust_air_temp_c,
+        "timber_temperature_c": res.timber_temperature_c,
         "sand_bed_temp_c": res.sand_bed_temp_c,
         "sensible_heat_demand_kw": res.sensible_heat_demand_kw,
         "sensible_air_heat_kw": res.sensible_air_heat_kw,
+        "ventilation_loss_kw": res.ventilation_loss_kw,
+        "chamber_loss_kw": res.chamber_loss_kw,
         "latent_and_loss_demand_kw": res.latent_and_loss_demand_kw,
+        "evaporation_heat_demand_kw": res.evaporation_heat_demand_kw,
         "total_process_demand_kw": res.total_process_demand_kw,
         "total_heat_demand_kw": res.total_heat_demand_kw,
+        "hx_power_limit_kw": res.hx_power_limit_kw,
         "heat_supplied_from_tes_kw": res.heat_supplied_from_tes_kw,
         "useful_heat_delivered_kw": res.useful_heat_delivered_kw,
         "backup_heater_power_kw": res.backup_heater_power_kw,
         "heat_shortfall_unmet_kw": res.heat_shortfall_unmet_kw,
+        "heat_shortfall_kw": res.heat_shortfall_kw,
+        "evaporation_heat_delivered_kw": res.evaporation_heat_delivered_kw,
         "total_heat_delivered_kw": res.total_heat_delivered_kw,
         "blower_power_kw": res.blower_power_kw,
+        "blower_electric_power_kw": res.blower_electric_power_kw,
+        "total_electricity_kw": res.total_electricity_kw,
+        "batch_dry_mass_kg": res.batch_dry_mass_kg,
         "current_moisture_percent": res.current_moisture_percent,
+        "batch_current_moisture_fraction": res.batch_current_moisture_fraction,
+        "batch_initial_moisture_fraction": res.batch_initial_moisture_fraction,
+        "batch_target_moisture_fraction": res.batch_target_moisture_fraction,
         "water_removed_total_kg": res.water_removed_total_kg,
+        "batch_water_removed_kg": res.batch_water_removed_kg,
         "batch_progress_percent": res.batch_progress_percent,
         "estimated_remaining_hours": res.estimated_remaining_hours,
+        "batch_est_remaining_hours": res.batch_est_remaining_hours,
+        "thermal_energy_per_kg_water_kwh": res.thermal_energy_per_kg_water_kwh,
         "is_batch_complete": res.is_batch_complete,
         "blower_interlock_active": res.blower_interlock_active,
         "tes_pinch_derated": res.tes_pinch_derated,
+        "power_deficit_warning": res.power_deficit_warning,
+        "warning_message": res.warning_message,
+        "alarms": res.alarms,
         "provenance": res.provenance.value,
     }
 
@@ -1092,6 +1120,13 @@ async def update_dryer_config(
 
     cfg = _shadow_service.dryer_model.config
 
+    if "simulation_mode" in body and body["simulation_mode"]:
+        sim_val = str(body["simulation_mode"]).upper()
+        try:
+            cfg.simulation_mode = DryerSimulationMode(sim_val)
+        except ValueError:
+            pass
+
     if "recipe_preset" in body and body["recipe_preset"]:
         preset_val = str(body["recipe_preset"]).upper()
         try:
@@ -1099,6 +1134,35 @@ async def update_dryer_config(
             _shadow_service.dryer_model.apply_recipe(preset)
         except ValueError:
             pass
+
+    if "wood_species" in body and body["wood_species"]:
+        species_val = str(body["wood_species"]).upper()
+        try:
+            cfg.wood_species = WoodSpecies(species_val)
+        except ValueError:
+            pass
+
+    if "timber_mass_dry_kg" in body and body["timber_mass_dry_kg"]:
+        cfg.timber_mass_dry_kg = float(body["timber_mass_dry_kg"])
+        _shadow_service.dryer_model.reset_batch(timber_mass_dry_kg=cfg.timber_mass_dry_kg)
+
+    if "board_thickness_mm" in body and body["board_thickness_mm"]:
+        cfg.board_thickness_mm = float(body["board_thickness_mm"])
+
+    if "recirculation_fraction" in body and body["recirculation_fraction"] is not None:
+        cfg.recirculation_fraction = max(0.0, min(1.0, float(body["recirculation_fraction"])))
+
+    if "requested_duration_hours" in body and body["requested_duration_hours"]:
+        cfg.requested_duration_hours = float(body["requested_duration_hours"])
+
+    if "reference_process_heat_load_kw" in body and body["reference_process_heat_load_kw"]:
+        cfg.reference_process_heat_load_kw = float(body["reference_process_heat_load_kw"])
+
+    if "initial_moisture_percent" in body and body["initial_moisture_percent"]:
+        cfg.initial_moisture_percent = float(body["initial_moisture_percent"])
+
+    if "target_moisture_percent" in body and body["target_moisture_percent"]:
+        cfg.target_moisture_percent = float(body["target_moisture_percent"])
 
     if "target_supply_temp_c" in body and body["target_supply_temp_c"]:
         cfg.target_supply_temp_c = float(body["target_supply_temp_c"])
@@ -1129,19 +1193,64 @@ async def update_dryer_config(
         "status": "ok",
         "message": "Dryer recipe and operating parameters updated successfully.",
         "config": {
+            "simulation_mode": cfg.simulation_mode.value,
             "mode": cfg.mode.value,
             "recipe_preset": cfg.recipe_preset.value,
+            "wood_species": cfg.wood_species.value,
+            "timber_mass_dry_kg": cfg.timber_mass_dry_kg,
             "target_supply_temp_c": cfg.target_supply_temp_c,
             "inlet_air_temp_c": cfg.inlet_air_temp_c,
             "airflow_m3_h": cfg.airflow_m3_h,
+            "recirculation_fraction": cfg.recirculation_fraction,
             "total_process_demand_kw": cfg.total_process_demand_kw,
+            "reference_process_heat_load_kw": cfg.reference_process_heat_load_kw,
+            "requested_duration_hours": cfg.requested_duration_hours,
             "backup_heater_enabled": cfg.backup_heater_enabled,
         },
         "step_result": {
             "achieved_supply_temp_c": res.achieved_supply_temp_c,
             "heat_supplied_from_tes_kw": res.heat_supplied_from_tes_kw,
             "backup_heater_power_kw": res.backup_heater_power_kw,
+            "power_deficit_warning": res.power_deficit_warning,
+            "warning_message": res.warning_message,
         },
+    }
+
+
+@api_router.post("/dryer/reset-batch")
+async def reset_dryer_batch(
+    request: Request,
+    _admin: UserSession = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    """Reset timber drying batch with custom or preset mass and moisture targets."""
+    content_type = request.headers.get("content-type", "")
+    if "application/json" in content_type:
+        body = await request.json()
+    else:
+        form = await request.form()
+        body = dict(form)
+
+    mass = float(body.get("timber_mass_dry_kg", 50.0))
+    init_mc = float(body.get("initial_moisture_percent", 50.0))
+    target_mc = float(body.get("target_moisture_percent", 15.0))
+    species_raw = body.get("wood_species")
+    species = WoodSpecies(str(species_raw).upper()) if species_raw else None
+
+    _shadow_service.dryer_model.reset_batch(
+        timber_mass_dry_kg=mass,
+        initial_moisture_percent=init_mc,
+        target_moisture_percent=target_mc,
+        wood_species=species,
+    )
+    sess = _shadow_service.get_or_create_session(db)
+    res = _shadow_service.dryer_model.step(sess.current_sand_temperature_c)
+    return {
+        "status": "ok",
+        "message": f"Drying batch reset for {mass:.1f} kg dry timber ({init_mc:.1f}% -> {target_mc:.1f}%).",
+        "timber_mass_dry_kg": mass,
+        "current_moisture_percent": res.current_moisture_percent,
+        "batch_progress_percent": res.batch_progress_percent,
     }
 
 

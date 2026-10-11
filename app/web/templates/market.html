@@ -162,6 +162,44 @@
       <div class="kpi-sub">Mean day-ahead spot price</div>
     </div>
   </div>
+
+  <div style="margin-top: 20px;">
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+      <h4 style="margin: 0; font-size: 0.88rem; color: var(--text-main); font-weight: 700;">Tomorrow Day-Ahead Price Curve (15-Minute Resolution)</h4>
+      <span class="badge badge-green">{{ market.tomorrow_stats.intervals_count }} Cleared Intervals</span>
+    </div>
+    <div class="chart-box" style="height: 280px;">
+      <canvas id="tomorrowPriceChart"></canvas>
+    </div>
+  </div>
+
+  <details style="margin-top: 16px; border: 1px solid var(--border); border-radius: 6px; padding: 10px 14px; background: #f8fafc;">
+    <summary style="font-weight: 600; cursor: pointer; color: var(--text-main); font-size: 0.88rem;">
+      View Tomorrow 15-Minute Cleared Price Table ({{ market.tomorrow_stats.intervals_count }} Intervals)
+    </summary>
+    <div class="table-container" style="margin-top: 12px; max-height: 380px; overflow-y: auto;">
+      <table class="engineering-table">
+        <thead>
+          <tr>
+            <th>Interval (Vilnius)</th>
+            <th class="num-col">Spot Price (&euro;/MWh)</th>
+            <th class="num-col">Spot Price (ct/kWh)</th>
+            <th class="num-col">Effective Variable (&euro;/MWh)</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for iv in market.tomorrow_stats.intervals %}
+          <tr>
+            <td style="font-weight: 600; color: var(--primary, #2563eb);">{{ iv.start_local }} &rarr; {{ iv.end_local }}</td>
+            <td class="num-col" style="font-weight: 700;">{{ "%.2f"|format(iv.price_eur_mwh) }}</td>
+            <td class="num-col">{{ "%.2f"|format(iv.price_eur_mwh / 10.0) }} &cent;</td>
+            <td class="num-col" style="color: #166534; font-weight: 600;">{{ "%.2f"|format(iv.price_eur_mwh + market.total_adders_eur_mwh|default(31.5)) }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </details>
   {% else %}
   <div style="padding: 16px; background: #fffbeb; border: 1px dashed #f59e0b; border-radius: 6px; color: #92400e;">
     <strong>TOMORROW PRICES NOT YET AVAILABLE:</strong> Nord Pool day-ahead auction clears around 13:00–14:00 CET. Tomorrow schedule will be populated once published by TSO. No synthetic or mock data is invented.
@@ -305,6 +343,76 @@ document.addEventListener("DOMContentLoaded", function() {
       }
     }
   });
+
+  // Tomorrow Price Chart Initialization (when available)
+  const tomorrowIntervals = {{ market.tomorrow_stats.intervals | tojson | default('[]') }};
+  const tomorrowCanvas = document.getElementById('tomorrowPriceChart');
+  if (tomorrowCanvas && tomorrowIntervals && tomorrowIntervals.length > 0) {
+    const tLabels = tomorrowIntervals.map(iv => iv.start_local);
+    const tPrices = tomorrowIntervals.map(iv => iv.price_eur_mwh);
+    const tCtx = tomorrowCanvas.getContext('2d');
+
+    new Chart(tCtx, {
+      type: 'line',
+      data: {
+        labels: tLabels,
+        datasets: [{
+          label: 'Tomorrow Spot (EUR/MWh)',
+          data: tPrices,
+          borderColor: '#16a34a',
+          backgroundColor: 'rgba(22, 163, 74, 0.08)',
+          fill: true,
+          stepped: 'before',
+          borderWidth: 2,
+          pointRadius: 0,
+          pointHoverRadius: 6,
+          pointBackgroundColor: '#16a34a',
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        interaction: {
+          mode: 'index',
+          intersect: false,
+        },
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            callbacks: {
+              title: function(items) {
+                const idx = items[0].dataIndex;
+                return `Tomorrow ${tomorrowIntervals[idx].start_local} – ${tomorrowIntervals[idx].end_local} (Europe/Vilnius)`;
+              },
+              label: function(item) {
+                return ` Spot Price: ${item.raw.toFixed(2)} EUR/MWh (${(item.raw / 10).toFixed(2)} ct/kWh)`;
+              }
+            }
+          }
+        },
+        scales: {
+          x: {
+            grid: { display: false },
+            ticks: {
+              maxTicksLimit: 12,
+              font: { size: 11 }
+            }
+          },
+          y: {
+            grid: { color: '#f1f5f9' },
+            title: {
+              display: true,
+              text: 'Price (EUR/MWh)',
+              font: { size: 11, weight: 'bold' }
+            },
+            ticks: {
+              font: { size: 11 }
+            }
+          }
+        }
+      }
+    });
+  }
 });
 </script>
 {% endblock %}

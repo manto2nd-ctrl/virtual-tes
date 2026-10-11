@@ -342,7 +342,12 @@
     <a href="/dashboard/history" class="btn btn-outline btn-sm">Full Ledger History &rarr;</a>
   </div>
 
-  <div class="kpi-grid" style="grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); margin-bottom: 0;">
+  <div class="kpi-grid" style="grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); margin-bottom: 0;">
+    <div class="kpi-card" style="margin-bottom: 0;">
+      <div class="kpi-label">Electricity Used by TES</div>
+      <div class="kpi-value" style="color: #2563eb;">{{ "%.2f"|format(shadow.ledger.get('tes_electricity_used_kwh', shadow.ledger.get('tes_charge_kwh', 0.0)) if shadow.ledger else 0.0) }}<span class="kpi-unit">kWh</span></div>
+      <div class="kpi-sub">Total charging electricity today</div>
+    </div>
     <div class="kpi-card" style="margin-bottom: 0;">
       <div class="kpi-label">Operating Electricity Cost</div>
       <div class="kpi-value">&euro;{{ "%.2f"|format(shadow.ledger.get('today_actual_cost_eur', shadow.ledger.get('electricity_cost_today_eur', 4.18)) if shadow.ledger else 4.18) }}</div>
@@ -448,23 +453,31 @@
 
 {% block scripts %}
 <script>
-  // Overview Price Chart (24h)
+  // Overview Price Chart (Real Lithuanian Day-Ahead Prices)
   const priceCtx = document.getElementById('overviewPriceChart');
   if (priceCtx) {
-    const hours = ['00:00','02:00','04:00','06:00','08:00','10:00','12:00','14:00','16:00','18:00','20:00','22:00','24:00'];
-    const prices = [52.1, 48.0, 42.5, 58.2, 85.0, 78.4, 62.0, 55.3, 68.9, 112.5, 94.0, 72.1, 60.0];
+    const todayIvs = {{ market.today_stats.intervals | tojson | default('[]') }};
+    let hours = ['00:00','02:00','04:00','06:00','08:00','10:00','12:00','14:00','16:00','18:00','20:00','22:00'];
+    let prices = [52.1, 48.0, 42.5, 58.2, 85.0, 78.4, 62.0, 55.3, 68.9, 112.5, 94.0, 72.1];
+
+    if (todayIvs && todayIvs.length > 0) {
+      hours = todayIvs.map(iv => iv.start_local);
+      prices = todayIvs.map(iv => iv.price_eur_mwh);
+    }
+
     new Chart(priceCtx, {
       type: 'line',
       data: {
         labels: hours,
         datasets: [{
-          label: 'Market Price (EUR/MWh)',
+          label: 'Market Spot (EUR/MWh)',
           data: prices,
           borderColor: '#2563eb',
-          backgroundColor: 'rgba(37, 99, 235, 0.1)',
+          backgroundColor: 'rgba(37, 99, 235, 0.08)',
           fill: true,
-          stepped: true,
-          tension: 0
+          tension: 0.1,
+          pointRadius: 0,
+          pointHoverRadius: 4
         }]
       },
       options: {
@@ -472,7 +485,8 @@
         maintainAspectRatio: false,
         plugins: { legend: { display: false } },
         scales: {
-          y: { title: { display: true, text: 'EUR/MWh' }, beginAtZero: false }
+          x: { ticks: { maxTicksLimit: 12, font: { size: 10 } }, grid: { color: 'rgba(0,0,0,0.04)' } },
+          y: { title: { display: true, text: 'EUR/MWh', font: { size: 10 } }, beginAtZero: false, grid: { color: 'rgba(0,0,0,0.06)' } }
         }
       }
     });

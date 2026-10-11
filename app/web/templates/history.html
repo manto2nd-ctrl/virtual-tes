@@ -37,7 +37,20 @@
 </div>
 
 <!-- AUDIT SUMMARY KPI CARDS -->
-<div class="kpi-grid">
+<div class="kpi-grid" style="grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));">
+  <div class="kpi-card">
+    <div class="kpi-top">
+      <div class="kpi-label">Electricity Used by TES</div>
+      <div class="kpi-icon" style="color: #2563eb;">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"></path></svg>
+      </div>
+    </div>
+    <div class="kpi-value" style="color: #2563eb;">
+      {{ "%.2f"|format(ledger_summary.tes_electricity_used_kwh|default(0.0)) }}<span class="kpi-unit">kWh</span>
+    </div>
+    <div class="kpi-sub">Total TES charging electricity</div>
+  </div>
+
   <div class="kpi-card">
     <div class="kpi-top">
       <div class="kpi-label">Heat Delivered (Process)</div>
@@ -111,7 +124,7 @@
           <th class="num-col">SOC Start &rarr; End</th>
           <th class="num-col">Sand Temp (&deg;C)</th>
           <th class="num-col">TES Heat (kW)</th>
-          <th class="num-col">TES Chg (kW)</th>
+          <th class="num-col">TES Chg (kW / kWh)</th>
           <th class="num-col">Backup (kW)</th>
           <th class="num-col">Baseline Cost (&euro;)</th>
           <th class="num-col">Actual Cost (&euro;)</th>
@@ -132,7 +145,10 @@
             </td>
             <td class="num-col">{{ "%.1f"|format(row.sand_temp_end_c|default(197.0)) }}</td>
             <td class="num-col" style="color: #ea580c; font-weight: 600;">{{ "%.2f"|format(row.heat_delivered_kw|default(0.0)) }}</td>
-            <td class="num-col" style="color: #2563eb;">{{ "%.2f"|format(row.tes_charge_kw|default(0.0)) }}</td>
+            <td class="num-col" style="color: #2563eb;">
+              {{ "%.2f"|format(row.tes_charge_kw|default(0.0)) }} kW
+              <div style="font-size: 0.72rem; color: #64748b;">({{ "%.2f"|format(row.tes_charge_energy_kwh|default(0.0)) }} kWh)</div>
+            </td>
             <td class="num-col">{% if row.backup_heater_kw > 0 %}<strong style="color: #d97706;">{{ "%.2f"|format(row.backup_heater_kw) }}</strong>{% else %}0.00{% endif %}</td>
             <td class="num-col">&euro;{{ "%.3f"|format(row.baseline_direct_electric_cost_eur|default(0.0)) }}</td>
             <td class="num-col">&euro;{{ "%.3f"|format(row.actual_electricity_cost_eur|default(0.0)) }}</td>

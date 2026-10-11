@@ -214,8 +214,7 @@ def page_overview(request: Request, db: Session = Depends(get_db)):
     ctx["market"] = market_view
     ctx["market_status"] = market_view["market_status"]
 
-    from app.services.shadow_runtime import ShadowRuntimeService
-    shadow_svc = ShadowRuntimeService()
+    from app.web.routes.api import _shadow_service as shadow_svc
     ctx["shadow"] = shadow_svc.get_live_dashboard_state(db)
 
     mapper = ThermalStateMapper(80.0, 300.0)
@@ -273,8 +272,7 @@ def page_market(request: Request, db: Session = Depends(get_db)):
     market_view = get_market_full_context(db)
     ctx["market"] = market_view
     ctx["market_status"] = market_view["market_status"]
-    from app.services.shadow_runtime import ShadowRuntimeService
-    shadow_svc = ShadowRuntimeService()
+    from app.web.routes.api import _shadow_service as shadow_svc
     ctx["shadow"] = shadow_svc.get_live_dashboard_state(db)
     return templates.TemplateResponse(request=request, name="market.html", context=ctx)
 
@@ -612,8 +610,7 @@ def page_scenarios(request: Request, db: Session = Depends(get_db)):
 def page_dryer(request: Request, db: Session = Depends(get_db)):
     """Dedicated Virtual Dryer V1 Equipment Page."""
     ctx = get_common_context(request, "dryer", db=db)
-    from app.services.shadow_runtime import ShadowRuntimeService
-    shadow_svc = ShadowRuntimeService()
+    from app.web.routes.api import _shadow_service as shadow_svc
     ctx["shadow"] = shadow_svc.get_live_dashboard_state(db)
     ctx["dryer_state"] = shadow_svc.get_dryer_status()
     ctx["dryer_config"] = shadow_svc.dryer_model.config
@@ -625,8 +622,7 @@ def page_dryer(request: Request, db: Session = Depends(get_db)):
 def page_bess(request: Request, db: Session = Depends(get_db)):
     """BESS (Battery Energy Storage System) Equipment Page - Proposed Specification."""
     ctx = get_common_context(request, "bess", db=db)
-    from app.services.shadow_runtime import ShadowRuntimeService
-    shadow_svc = ShadowRuntimeService()
+    from app.web.routes.api import _shadow_service as shadow_svc
     ctx["shadow"] = shadow_svc.get_live_dashboard_state(db)
     ctx["runtime_status"] = get_runtime_status_context(db)
     return templates.TemplateResponse(request=request, name="bess.html", context=ctx)

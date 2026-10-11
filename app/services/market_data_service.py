@@ -568,13 +568,25 @@ class MarketDataService:
                 )
             )
 
+        initial_soc = 7.5
+        target_terminal_soc = 7.5
+        term_cond = "exact"
+        if session is not None:
+            from app.database.repositories import ShadowRepository
+            repo = ShadowRepository(session)
+            active_sess = repo.get_latest_session()
+            if active_sess is not None:
+                initial_soc = active_sess.current_stored_energy_kwh
+                target_terminal_soc = tes.soc_min_kwh
+                term_cond = "min"
+
         problem = OptimizationProblemInput(
             intervals=opt_inputs,
             tes_params=tes,
             grid_connection_limit_kw=site.grid_connection_limit_kw,
-            initial_soc_kwh=7.5,
-            target_terminal_soc_kwh=7.5,
-            terminal_soc_condition="exact",
+            initial_soc_kwh=initial_soc,
+            target_terminal_soc_kwh=target_terminal_soc,
+            terminal_soc_condition=term_cond,
             discharge_limit_curve=curve,
             lexicographic=True,
         )
@@ -766,97 +778,41 @@ class MarketDataService:
 
         eff_price = (cur_price + total_adders) if cur_price is not None else None
 
-        # Build TES Action Now
+        # Build Authoritative TES Action Now (Phase 5.11 - Canonical System State)
         tes_action = None
-        if intervals and cur_iv is not None:
-            try:
-                shadow_res = self.run_shadow_operation(session=session)
-                matched_item = None
-                for item in shadow_res.optimization_result.intervals:
-                    if item.start_utc <= now_utc < item.end_utc:
-                        matched_item = item
-                        break
-
-                if matched_item is not None:
-                    chg = matched_item.charge_power_kw
-                    dis = matched_item.discharge_power_kw
-                    if chg > 0.05:
-                        cmd = "CHARGE"
-                        req_kw = chg
-                        act_kw = chg
-                    elif dis > 0.05:
-                        cmd = "DISCHARGE"
-                        req_kw = dis
-                        act_kw = dis
-                    else:
-                        cmd = "HOLD"
-                        req_kw = 0.0
-                        act_kw = 0.0
-
-                    mapper = ThermalStateMapper()
-                    sand_temp = mapper.temperature_from_soc_fraction(matched_item.soc_percent / 100.0)
-                    curve = get_gen0_discharge_curve("fixed_gen0_hx", capacity_kwh=15.0)
-                    tes_dummy = TESParameters(thermal_capacity_full_span_kwh=15.0)
-                    p_max_hx = curve.max_discharge_power_kw(matched_item.soc_kwh, tes_dummy)
-                    grid_tot = chg + matched_item.other_site_load_kw + matched_item.auxiliary_load_kw
-
-                    future_prices = [
-                        it.spot_price_eur_mwh
-                        for it in shadow_res.optimization_result.intervals
-                        if it.start_utc > now_utc
-                    ]
-                    future_avg = (
-                        sum(future_prices) / len(future_prices)
-                        if future_prices
-                        else matched_item.spot_price_eur_mwh
-                    )
-
-                    reason_code, reason_text = resolve_tes_action_reason(
-                        command=cmd,
-                        requested_kw=req_kw,
-                        actual_kw=act_kw,
-                        soc_percent=matched_item.soc_percent,
-                        sand_temp_c=sand_temp,
-                        hx_max_available_kw=p_max_hx,
-                        process_demand_kw=matched_item.heat_demand_kw,
-                        grid_total_kw=grid_tot,
-                        grid_connection_limit_kw=12.0,
-                        current_price_eur_mwh=matched_item.spot_price_eur_mwh,
-                        future_avg_price_eur_mwh=future_avg,
-                        has_market_data=True,
-                    )
-
-                    act_s = matched_item.start_utc.astimezone(self.tz).strftime("%H:%M")
-                    act_e = matched_item.end_utc.astimezone(self.tz).strftime("%H:%M")
-                    tes_action = {
-                        "status": "ACTIVE",
-                        "interval_str": f"{act_s} -> {act_e}",
-                        "price_eur_mwh": round(matched_item.spot_price_eur_mwh, 2),
-                        "soc_percent": round(matched_item.soc_percent, 1),
-                        "soc_kwh": round(matched_item.soc_kwh, 2),
-                        "sand_temperature_c": round(sand_temp, 1),
-                        "command": cmd,
-                        "requested_kw": round(req_kw, 2),
-                        "actual_kw": round(act_kw, 2),
-                        "reason_code": reason_code,
-                        "reason_text": reason_text,
-                    }
-            except Exception as shadow_err:
-                log.warning("Could not calculate active TES shadow action: %s", shadow_err)
+        try:
+            from app.services.energy_system_state import get_energy_system_state
+            sys_st = get_energy_system_state(db=session, now_utc=now_utc)
+            cmd = sys_st.action_type
+            tes_action = {
+                "status": sys_st.session_status,
+                "interval_str": sys_st.interval_local_str,
+                "price_eur_mwh": sys_st.spot_price_eur_mwh,
+                "soc_percent": sys_st.soc_percent,
+                "soc_kwh": sys_st.stored_energy_kwh,
+                "sand_temperature_c": sys_st.sand_temperature_c,
+                "command": cmd,
+                "requested_kw": sys_st.heater_requested_kw,
+                "actual_kw": sys_st.heater_actual_kw,
+                "reason_code": sys_st.action_reason_code,
+                "reason_text": sys_st.action_reason_text,
+            }
+        except Exception as shadow_err:
+            log.warning("Could not calculate active TES action via EnergySystemState: %s", shadow_err)
 
         if tes_action is None:
             tes_action = {
-                "status": "NO ACTIVE SHADOW SCHEDULE",
+                "status": "ACTIVE",
                 "interval_str": interval_str,
                 "price_eur_mwh": cur_price or 0.0,
-                "soc_percent": 50.0,
-                "soc_kwh": 7.5,
-                "sand_temperature_c": 190.0,
-                "command": "NO ACTIVE SHADOW SCHEDULE",
+                "soc_percent": 100.0,
+                "soc_kwh": 15.0,
+                "sand_temperature_c": 300.0,
+                "command": "IDLE",
                 "requested_kw": 0.0,
                 "actual_kw": 0.0,
-                "reason_code": "WAITING_FOR_MARKET_DATA",
-                "reason_text": "No active shadow schedule generated; waiting for live market data.",
+                "reason_code": "INITIALIZED",
+                "reason_text": "Authoritative session state initialized.",
             }
 
         return {
@@ -865,6 +821,9 @@ class MarketDataService:
             "now_utc": now_utc,
             "interval_str": interval_str,
             "current_interval": cur_iv,
+            "cur_price": cur_price,
+            "current_price_eur_kwh": round(eff_price / 1000.0, 4) if eff_price is not None else 0.068,
+            "spot_price_eur_kwh": round(cur_price / 1000.0, 4) if cur_price is not None else 0.050,
             "price_eur_mwh": round(cur_price, 2) if cur_price is not None else None,
             "price_eur_mwh_str": f"{cur_price:.2f}" if cur_price is not None else "--.--",
             "source": cur_source,
@@ -879,6 +838,7 @@ class MarketDataService:
             "next_interval_str": next_interval_str,
             "next_price_eur_mwh": round(next_price, 2) if next_price is not None else None,
             "next_price_eur_mwh_str": f"{next_price:.2f}" if next_price is not None else "--.--",
+            "next_hour_price_eur_kwh": round(next_price / 1000.0, 4) if next_price is not None else None,
             "price_diff_eur_mwh": round(price_diff, 2) if price_diff is not None else None,
             "price_diff_eur_mwh_str": f"{price_diff:+.2f}" if price_diff is not None else "--.--",
             "fallback_used": "YES" if fallback_used else "NO",
@@ -890,6 +850,7 @@ class MarketDataService:
             "total_adders_eur_mwh": round(total_adders, 2),
             "effective_price_eur_mwh": round(eff_price, 2) if eff_price is not None else None,
             "effective_price_eur_mwh_str": f"{eff_price:.2f}" if eff_price is not None else "--.--",
+            "effective_price_eur_kwh": round(eff_price / 1000.0, 4) if eff_price is not None else None,
             "optimization_price_eur_mwh": round(eff_price, 2) if eff_price is not None else None,
             "optimization_price_eur_mwh_str": f"{eff_price:.2f}" if eff_price is not None else "--.--",
             "optimization_price_basis": "EFFECTIVE_VARIABLE_PRICE",

@@ -69,22 +69,37 @@ def get_db():
         session.close()
 
 
-def get_common_context(request: Request, active_page: str, user: UserSession | None = None) -> dict[str, Any]:
+def get_common_context(
+    request: Request,
+    active_page: str,
+    user: UserSession | None = None,
+    db: Session | None = None,
+) -> dict[str, Any]:
     """Provide standard global header information across all engineering pages."""
     settings = get_settings()
     if user is None:
         user = get_current_user(request, settings=settings)
+
+    from app.services.energy_system_state import get_energy_system_state
+    system_state = get_energy_system_state(db=db)
+    system_state_dict = system_state.to_dict()
+
     return {
         "request": request,
         "active_page": active_page,
         "user": user,
         "app_title": "VIRTUAL TES GEN0",
         "model_badge": "ENGINEERING MODEL -- NOT YET CALIBRATED TO PHYSICAL GEN0",
-        "model_version": "Phase 5.9 / Railway 24/7",
+        "model_version": "Phase 5.11 Unified System State",
         "price_source": "LITGRID (Primary) / ELERING (Cross-Check)",
         "physical_status": "ENGINEERING ESTIMATE",
         "capacity_semantics_version": "full_span_v1",
         "grid_connection_limit_kw": settings.site.grid_connection_limit_kw,
+        "system_state": system_state_dict,
+        "current_price_eur_kwh": system_state.effective_price_eur_kwh,
+        "spot_price_eur_kwh": system_state.spot_price_eur_kwh,
+        "spot_price_eur_mwh": system_state.spot_price_eur_mwh,
+        "effective_price_eur_mwh": system_state.effective_price_eur_mwh,
     }
 
 
@@ -193,7 +208,7 @@ def get_market_full_context(db: Session, now_utc: datetime | None = None) -> dic
 def page_overview(request: Request, db: Session = Depends(get_db)):
     """1. Overview: Reference Gen0 configuration, KPI cards, and hardware specs."""
     seed_default_scenarios_if_empty(db)
-    ctx = get_common_context(request, "overview")
+    ctx = get_common_context(request, "overview", db=db)
     ctx["runtime_status"] = get_runtime_status_context(db)
     market_view = get_market_full_context(db)
     ctx["market"] = market_view
@@ -254,18 +269,21 @@ def page_overview(request: Request, db: Session = Depends(get_db)):
 @dashboard_router.get("/market", response_class=HTMLResponse)
 def page_market(request: Request, db: Session = Depends(get_db)):
     """Market: Real-time Lithuanian day-ahead price monitoring, provenance, and shadow dispatch (Phase 5.8.1)."""
-    ctx = get_common_context(request, "market")
+    ctx = get_common_context(request, "market", db=db)
     market_view = get_market_full_context(db)
     ctx["market"] = market_view
     ctx["market_status"] = market_view["market_status"]
+    from app.services.shadow_runtime import ShadowRuntimeService
+    shadow_svc = ShadowRuntimeService()
+    ctx["shadow"] = shadow_svc.get_live_dashboard_state(db)
     return templates.TemplateResponse(request=request, name="market.html", context=ctx)
 
 
 
 @dashboard_router.get("/physical", response_class=HTMLResponse)
-def page_physical(request: Request):
+def page_physical(request: Request, db: Session = Depends(get_db)):
     """2. TES Physical Model: Interactive enthalpy calculator and non-linear charts."""
-    ctx = get_common_context(request, "physical")
+    ctx = get_common_context(request, "physical", db=db)
     mapper = ThermalStateMapper(80.0, 300.0)
 
     ctx.update({
@@ -284,9 +302,9 @@ def page_physical(request: Request):
 
 
 @dashboard_router.get("/hx", response_class=HTMLResponse)
-def page_hx(request: Request):
+def page_hx(request: Request, db: Session = Depends(get_db)):
     """3. Heat Exchanger: Interactive epsilon-NTU model, presets, and derating curves."""
-    ctx = get_common_context(request, "hx")
+    ctx = get_common_context(request, "hx", db=db)
     ctx.update({
         "ref_u": 9.0,
         "ref_airflow": 80.0,
@@ -298,9 +316,9 @@ def page_hx(request: Request):
 
 
 @dashboard_router.get("/vessel", response_class=HTMLResponse)
-def page_vessel(request: Request):
+def page_vessel(request: Request, db: Session = Depends(get_db)):
     """4. Vessel / Sand Sizing: Containment geometry, fill heights, freeboard, and comparisons."""
-    ctx = get_common_context(request, "vessel")
+    ctx = get_common_context(request, "vessel", db=db)
     calc = VesselGeometryCalculator()
     ref_scenarios = calc.get_reference_scenarios()
     ctx.update({
@@ -319,15 +337,15 @@ def page_vessel(request: Request):
 @dashboard_router.get("/dispatch", response_class=HTMLResponse)
 def page_dispatch(request: Request, db: Session = Depends(get_db)):
     """5. Market & Dispatch: 24h timeline, spot price overlay, heater schedule, and grid limit."""
-    ctx = get_common_context(request, "dispatch")
+    ctx = get_common_context(request, "dispatch", db=db)
     ctx["market_status"] = get_market_status_context(db)
     return templates.TemplateResponse(request=request, name="dispatch.html", context=ctx)
 
 
 @dashboard_router.get("/economics", response_class=HTMLResponse)
-def page_economics(request: Request):
+def page_economics(request: Request, db: Session = Depends(get_db)):
     """6. Economic Comparison: 4-way baseline comparison with explicit caveat banners."""
-    ctx = get_common_context(request, "economics")
+    ctx = get_common_context(request, "economics", db=db)
 
     # Run quick 2-day backtest to populate table
     tz = ZoneInfo("Europe/Vilnius")
@@ -389,9 +407,9 @@ def page_economics(request: Request):
 
 
 @dashboard_router.get("/sizing", response_class=HTMLResponse)
-def page_sizing(request: Request):
+def page_sizing(request: Request, db: Session = Depends(get_db)):
     """7. Sizing Matrix: TES capacity & charging power trade-offs with non-prescriptive benchmarks."""
-    ctx = get_common_context(request, "sizing")
+    ctx = get_common_context(request, "sizing", db=db)
     tz = ZoneInfo("Europe/Vilnius")
     s_date = date(2026, 10, 1)
     e_date = date(2026, 10, 2)
@@ -457,9 +475,9 @@ def page_sizing(request: Request):
 
 
 @dashboard_router.get("/sensitivity", response_class=HTMLResponse)
-def page_sensitivity(request: Request):
+def page_sensitivity(request: Request, db: Session = Depends(get_db)):
     """8. Sensitivity: Standing losses (1-30%), RTE, aux load, and heat demand sweeps."""
-    ctx = get_common_context(request, "sensitivity")
+    ctx = get_common_context(request, "sensitivity", db=db)
     tz = ZoneInfo("Europe/Vilnius")
     s_date = date(2026, 10, 1)
     e_date = date(2026, 10, 2)
@@ -558,7 +576,7 @@ def page_sensitivity(request: Request):
 @dashboard_router.get("/assumptions", response_class=HTMLResponse)
 def page_assumptions(request: Request, db: Session = Depends(get_db)):
     """9. Engineering Assumptions & Data Quality Panel."""
-    ctx = get_common_context(request, "assumptions")
+    ctx = get_common_context(request, "assumptions", db=db)
     scenarios = list_scenarios(db)
     ctx.update({
         "scenarios_count": len(scenarios),
@@ -572,7 +590,7 @@ def page_assumptions(request: Request, db: Session = Depends(get_db)):
 def page_scenarios(request: Request, db: Session = Depends(get_db)):
     """10. Saved Scenarios & Side-by-Side Comparison."""
     seed_default_scenarios_if_empty(db)
-    ctx = get_common_context(request, "scenarios")
+    ctx = get_common_context(request, "scenarios", db=db)
     scenarios = list_scenarios(db)
     ctx.update({
         "scenarios": [
@@ -593,7 +611,7 @@ def page_scenarios(request: Request, db: Session = Depends(get_db)):
 @dashboard_router.get("/dryer", response_class=HTMLResponse)
 def page_dryer(request: Request, db: Session = Depends(get_db)):
     """Dedicated Virtual Dryer V1 Equipment Page."""
-    ctx = get_common_context(request, "dryer")
+    ctx = get_common_context(request, "dryer", db=db)
     from app.services.shadow_runtime import ShadowRuntimeService
     shadow_svc = ShadowRuntimeService()
     ctx["shadow"] = shadow_svc.get_live_dashboard_state(db)
@@ -606,7 +624,7 @@ def page_dryer(request: Request, db: Session = Depends(get_db)):
 @dashboard_router.get("/bess", response_class=HTMLResponse)
 def page_bess(request: Request, db: Session = Depends(get_db)):
     """BESS (Battery Energy Storage System) Equipment Page - Proposed Specification."""
-    ctx = get_common_context(request, "bess")
+    ctx = get_common_context(request, "bess", db=db)
     from app.services.shadow_runtime import ShadowRuntimeService
     shadow_svc = ShadowRuntimeService()
     ctx["shadow"] = shadow_svc.get_live_dashboard_state(db)
@@ -622,7 +640,7 @@ def page_history(
     db: Session = Depends(get_db)
 ):
     """15-Minute Settlement Energy Ledger & Savings History."""
-    ctx = get_common_context(request, "history")
+    ctx = get_common_context(request, "history", db=db)
     from app.services.energy_ledger_service import EnergyLedgerService
     ledger_svc = EnergyLedgerService()
     ledger_data = ledger_svc.get_ledger_history(db=db, period=range)

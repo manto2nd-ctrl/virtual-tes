@@ -9,10 +9,15 @@
 <div class="engineering-banner">
   <div>
     <strong>ENGINEERING ESTIMATE ONLY — NOT YET CALIBRATED TO PHYSICAL GEN0:</strong> Parameters reflect the preliminary analytical model prior to hardware fabrication.
+    {% if system_state is defined and system_state %}
+    <div style="font-size: 0.75rem; color: #475569; margin-top: 3px; font-family: var(--font-mono);">
+      Authoritative Twin Run: <strong>{{ system_state.simulation_run_id }}</strong> &bull; Version: <strong>{{ system_state.state_version }}</strong> &bull; Snapshot: <strong>{{ system_state.snapshot_timestamp_local_str }}</strong>
+    </div>
+    {% endif %}
   </div>
   <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
     <span class="badge badge-amber">NOT FOR FABRICATION</span>
-    <span class="badge badge-green">MARKET: LIVE (LITGRID)</span>
+    <span class="badge badge-green">MARKET: LIVE ({{ system_state.active_market_provider if system_state is defined and system_state else 'LITGRID' }})</span>
     <span class="badge badge-blue">TES: SIMULATED TWIN</span>
     <span class="badge badge-blue">DRYER: SIMULATED KINETICS</span>
     <span class="badge badge-slate">BESS: PROPOSED</span>
@@ -31,11 +36,12 @@
       </div>
     </div>
     <div class="kpi-value">
-      {{ "%.2f"|format(shadow.current_power_kw|default(2.5)) }}<span class="kpi-unit">kW</span>
+      {{ "%.2f"|format(system_state.total_grid_import_kw if system_state is defined and system_state else (shadow.current_power_kw|default(2.5))) }}<span class="kpi-unit">kW</span>
     </div>
-    <div class="kpi-sub">Limit: {{ grid_limit_kw|default(12.0) }} kW</div>
+    <div class="kpi-sub">Limit: {{ grid_limit_kw|default(12.0) }} kW &bull; Headroom: {{ "%.2f"|format(system_state.grid_headroom_kw if system_state is defined and system_state else 9.95) }} kW</div>
     <div class="kpi-bar">
-      {% set grid_pct = ((shadow.current_power_kw|default(2.5) / grid_limit_kw|default(12.0)) * 100)|round %}
+      {% set cur_p = system_state.total_grid_import_kw if system_state is defined and system_state else (shadow.current_power_kw|default(2.5)) %}
+      {% set grid_pct = ((cur_p / grid_limit_kw|default(12.0)) * 100)|round %}
       <div class="kpi-bar-fill" style="width: {{ [grid_pct, 100]|min }}%; background: #2563eb;"></div>
     </div>
   </div>
@@ -49,32 +55,41 @@
       </div>
     </div>
     <div class="kpi-value">
-      {% if market and market.get('current_price_eur_kwh') is not none %}{{ "%.3f"|format(market.get('current_price_eur_kwh')) }}{% else %}0.068{% endif %}<span class="kpi-unit">&euro;/kWh</span>
+      {%- if system_state is defined and system_state and system_state.spot_price_eur_kwh is defined -%}
+        {{ "%.3f"|format(system_state.spot_price_eur_kwh) }}
+      {%- elif market and market.get('spot_price_eur_kwh') is not none -%}
+        {{ "%.3f"|format(market.get('spot_price_eur_kwh')) }}
+      {%- elif market and market.get('cur_price') is not none -%}
+        {{ "%.3f"|format(market.get('cur_price') / 1000.0) }}
+      {%- else -%}
+        0.068
+      {%- endif -%}
+      <span class="kpi-unit">&euro;/kWh spot</span>
     </div>
     <div class="kpi-sub">
-      Next hour: {% if market and market.get('next_hour_price_eur_kwh') is not none %}{{ "%.3f"|format(market.get('next_hour_price_eur_kwh')) }}{% else %}0.072{% endif %} &euro;/kWh
+      Effective: <strong>{% if system_state is defined and system_state and system_state.effective_price_eur_kwh is defined %}&euro;{{ "%.3f"|format(system_state.effective_price_eur_kwh) }}/kWh{% elif market and market.get('effective_price_eur_mwh') is not none %}&euro;{{ "%.3f"|format(market.get('effective_price_eur_mwh') / 1000.0) }}/kWh{% else %}&euro;0.099/kWh{% endif %}</strong> (Spot: &euro;{{ "%.2f"|format(system_state.spot_price_eur_mwh if system_state is defined and system_state else (market.cur_price|default(0.0))) }}/MWh)
     </div>
     <div class="kpi-bar">
       <div class="kpi-bar-fill" style="width: 45%; background: #f59e0b;"></div>
     </div>
   </div>
 
-  <!-- Card 3: TES Heat Available -->
+  <!-- Card 3: TES Heat Available (Max HX) -->
   <div class="kpi-card">
     <div class="kpi-top">
-      <div class="kpi-label">TES Heat Available</div>
+      <div class="kpi-label">TES Heat Available (Max HX)</div>
       <div class="kpi-icon orange">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 2.5z"></path></svg>
       </div>
     </div>
     <div class="kpi-value">
-      {{ "%.2f"|format(shadow.hx_actual_heat_kw|default(1.68)) }}<span class="kpi-unit">kW</span>
+      {{ "%.2f"|format(system_state.hx_max_power_kw if system_state is defined and system_state else (shadow.hx_max_available_kw|default(2.79))) }}<span class="kpi-unit">kW max</span>
     </div>
     <div class="kpi-sub">
-      SOC: {{ "%.1f"|format(shadow.soc_percent|default(62.0)) }}% ({{ "%.2f"|format(shadow.stored_energy_kwh|default(9.3)) }} kWh)
+      Delivered: <strong>{{ "%.2f"|format(system_state.hx_delivered_heat_kw if system_state is defined and system_state else (shadow.hx_actual_heat_kw|default(1.50))) }} kW</strong> &bull; SOC: {{ "%.1f"|format(system_state.soc_percent if system_state is defined and system_state else (shadow.soc_percent|default(100.0))) }}%
     </div>
     <div class="kpi-bar">
-      <div class="kpi-bar-fill" style="width: {{ shadow.soc_percent|default(62.0) }}%; background: #ea580c;"></div>
+      <div class="kpi-bar-fill" style="width: {{ system_state.soc_percent if system_state is defined and system_state else (shadow.soc_percent|default(100.0)) }}%; background: #ea580c;"></div>
     </div>
   </div>
 
@@ -87,9 +102,9 @@
       </div>
     </div>
     <div class="kpi-value">
-      {% if shadow.dryer and shadow.dryer.get('total_process_demand_kw') is not none %}{{ "%.2f"|format(shadow.dryer.get('total_process_demand_kw')) }}{% elif shadow.dryer and shadow.dryer.get('total_heat_demand_kw') is not none %}{{ "%.2f"|format(shadow.dryer.get('total_heat_demand_kw')) }}{% else %}1.50{% endif %}<span class="kpi-unit">kW</span>
+      {{ "%.2f"|format(system_state.dryer_heat_demand_kw if system_state is defined and system_state else 1.50) }}<span class="kpi-unit">kW</span>
     </div>
-    <div class="kpi-sub">Status: <strong style="color: #16a34a;">{% if shadow.dryer %}{{ shadow.dryer.get('status', 'Running') }}{% else %}Running{% endif %}</strong></div>
+    <div class="kpi-sub">Delivered from TES: <strong style="color: #16a34a;">{{ "%.2f"|format(system_state.dryer_delivered_heat_kw if system_state is defined and system_state else 1.50) }} kW</strong></div>
     <div class="kpi-bar">
       <div class="kpi-bar-fill" style="width: 100%; background: #0d9488;"></div>
     </div>
@@ -113,7 +128,7 @@
       <div style="color: #2563eb; margin-bottom: 4px;">
         <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v20M5 7l14 0M7 17l10 0M9 12l6 0"></path></svg>
       </div>
-      <div style="font-size: 1.15rem; font-weight: 800; color: #0f172a;">{{ "%.2f"|format(shadow.current_power_kw|default(2.5)) }} kW</div>
+      <div style="font-size: 1.15rem; font-weight: 800; color: #0f172a;">{{ "%.2f"|format(system_state.total_grid_import_kw if system_state is defined and system_state else (shadow.current_power_kw|default(2.5))) }} kW</div>
       <div style="font-size: 0.7rem; color: #64748b;">(limit {{ grid_limit_kw|default(12.0) }} kW)</div>
     </div>
 
@@ -126,9 +141,9 @@
       <div style="color: #d97706; margin-bottom: 4px;">
         <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="6" y="2" width="12" height="20" rx="4"></rect><line x1="6" y1="8" x2="18" y2="8"></line><line x1="6" y1="14" x2="18" y2="14"></line></svg>
       </div>
-      <div style="font-size: 1.15rem; font-weight: 800; color: #0f172a;">{{ "%.2f"|format(shadow.hx_actual_heat_kw|default(1.68)) }} kW out</div>
+      <div style="font-size: 1.15rem; font-weight: 800; color: #0f172a;">{{ "%.2f"|format(system_state.hx_delivered_heat_kw if system_state is defined and system_state else (shadow.hx_actual_heat_kw|default(1.50))) }} kW out</div>
       <div style="font-size: 0.72rem; color: #78350f;">
-        {{ "%.1f"|format(shadow.stored_energy_kwh|default(9.3)) }} kWh ({{ "%.0f"|format(shadow.soc_percent|default(62)) }}%) &bull; T: {{ "%.0f"|format(shadow.sand_temperature_c|default(197)) }}&deg;C
+        {{ "%.1f"|format(system_state.stored_energy_kwh if system_state is defined and system_state else (shadow.stored_energy_kwh|default(15.0))) }} kWh ({{ "%.0f"|format(system_state.soc_percent if system_state is defined and system_state else (shadow.soc_percent|default(100))) }}%) &bull; T: {{ "%.0f"|format(system_state.sand_temperature_c if system_state is defined and system_state else (shadow.sand_temperature_c|default(300))) }}&deg;C
       </div>
     </div>
 
@@ -141,9 +156,9 @@
       <div style="color: #64748b; margin-bottom: 4px;">
         <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"></circle><path d="M12 3v18"></path><path d="M3 12h18"></path></svg>
       </div>
-      <div style="font-size: 1.15rem; font-weight: 800; color: #0f172a;">{{ "%.2f"|format(shadow.hx_actual_heat_kw|default(1.50)) }} kW</div>
+      <div style="font-size: 1.15rem; font-weight: 800; color: #0f172a;">{{ "%.2f"|format(system_state.hx_max_power_kw if system_state is defined and system_state else (shadow.hx_max_available_kw|default(2.79))) }} kW max</div>
       <div style="font-size: 0.7rem; color: #64748b;">
-        Inlet: {{ "%.0f"|format(shadow.sand_temperature_c|default(197)) }}&deg;C &bull; Outlet: ~120&deg;C
+        Delivery: {{ "%.2f"|format(system_state.hx_delivered_heat_kw if system_state is defined and system_state else (shadow.hx_actual_heat_kw|default(1.50))) }} kW &bull; Sand: {{ "%.0f"|format(system_state.sand_temperature_c if system_state is defined and system_state else (shadow.sand_temperature_c|default(300))) }}&deg;C
       </div>
     </div>
 

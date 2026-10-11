@@ -150,27 +150,27 @@
 
         <div style="font-size: 0.75rem; color: #166534; background: #dcfce7; padding: 6px 10px; border-radius: 4px; margin-bottom: 14px; font-weight: 600; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 6px;">
           <span>✓ REAL LT MARKET DATA + VIRTUAL TES OPERATION (ZERO HARDWARE COMMANDS)</span>
-          <span style="font-family: var(--font-mono); font-size: 0.72rem; color: #047857;">State Evolution: {{ shadow.state_evolution if shadow else 'IDLE' }}</span>
+          <span style="font-family: var(--font-mono); font-size: 0.72rem; color: #047857;">Run ID: {{ system_state.simulation_run_id if system_state is defined and system_state else (shadow.session_id if shadow else 'gen0-live-shadow') }}</span>
         </div>
 
         <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; font-size: 0.82rem; margin-bottom: 14px; background: #f8fafc; padding: 10px 12px; border-radius: 6px; border: 1px solid var(--border-color);">
           <div>
             <div style="color: var(--text-muted); font-size: 0.75rem;">Market Interval</div>
-            <strong>{{ shadow.current_interval_vilnius if shadow else market.tes_action.interval_str }}</strong>
+            <strong>{{ system_state.interval_local_str if system_state is defined and system_state else (shadow.current_interval_vilnius if shadow else market.tes_action.interval_str) }}</strong>
           </div>
           <div>
             <div style="color: var(--text-muted); font-size: 0.75rem;">Optimization Price Used</div>
-            <strong>{{ "%.2f"|format(shadow.optimization_price_eur_mwh if shadow else market.optimization_price_eur_mwh) }} EUR/MWh</strong>
+            <strong>{{ "%.2f"|format(system_state.effective_price_eur_mwh if system_state is defined and system_state else (shadow.optimization_price_eur_mwh if shadow else market.optimization_price_eur_mwh)) }} EUR/MWh</strong>
             <span style="font-size: 0.68rem; color: var(--text-muted); display: block;">Basis: {{ shadow.optimization_price_basis if shadow else market.optimization_price_basis }}</span>
           </div>
           <div>
             <div style="color: var(--text-muted); font-size: 0.75rem;">TES State of Charge (SOC)</div>
-            <strong style="color: var(--primary, #2563eb);">{{ "%.1f"|format(shadow.soc_percent if shadow else market.tes_action.soc_percent) }} %</strong>
-            <span style="font-size: 0.75rem; color: var(--text-muted);">({{ "%.2f"|format(shadow.stored_energy_kwh if shadow else market.tes_action.soc_kwh) }} kWh)</span>
+            <strong style="color: var(--primary, #2563eb);">{{ "%.1f"|format(system_state.soc_percent if system_state is defined and system_state else (shadow.soc_percent if shadow else market.tes_action.soc_percent)) }} %</strong>
+            <span style="font-size: 0.75rem; color: var(--text-muted);">({{ "%.2f"|format(system_state.stored_energy_kwh if system_state is defined and system_state else (shadow.stored_energy_kwh if shadow else market.tes_action.soc_kwh)) }} kWh)</span>
           </div>
           <div>
             <div style="color: var(--text-muted); font-size: 0.75rem;">Sand Bulk Temperature</div>
-            <strong style="color: #b45309;">~{{ "%.1f"|format(shadow.sand_temperature_c if shadow else market.tes_action.sand_temperature_c) }} °C</strong>
+            <strong style="color: #b45309;">~{{ "%.1f"|format(system_state.sand_temperature_c if system_state is defined and system_state else (shadow.sand_temperature_c if shadow else market.tes_action.sand_temperature_c)) }} °C</strong>
           </div>
           <div>
             <div style="color: var(--text-muted); font-size: 0.75rem;">Planned / Requested Power</div>

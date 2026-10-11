@@ -423,14 +423,24 @@ def get_market_current(db: Session = Depends(get_db)) -> dict[str, Any]:
 @api_router.get("/market/current-card", response_class=HTMLResponse)
 def get_market_current_card(request: Request, db: Session = Depends(get_db)):
     """Render HTML fragment of the current-market and TES action cards for HTMX 60-second polling (Phase 5.8.1)."""
+    from app.services.energy_system_state import get_energy_system_state
     from app.services.market_data_service import MarketDataService
+    from app.services.shadow_runtime import ShadowRuntimeService
 
     service = MarketDataService()
     ctx = service.get_market_view_context(session=db)
+    shadow_svc = ShadowRuntimeService()
+    shadow_state = shadow_svc.get_live_dashboard_state(db)
+    system_state = get_energy_system_state(db=db)
     return templates.TemplateResponse(
         request=request,
         name="components/market_current_card.html",
-        context={"request": request, "market": ctx},
+        context={
+            "request": request,
+            "market": ctx,
+            "shadow": shadow_state,
+            "system_state": system_state.to_dict(),
+        },
     )
 
 

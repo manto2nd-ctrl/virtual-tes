@@ -653,10 +653,30 @@
         </div>
 
         <div class="top-bar-actions">
-          <div class="header-pill green">
+          <div class="header-pill green" title="Effective variable electricity price for current 15-minute settlement interval">
             <span>Market Price:</span>
-            <strong>{% if market is defined and market and market.get('current_price_eur_kwh') is not none %}&euro;{{ "%.3f"|format(market.get('current_price_eur_kwh')) }}/kWh{% else %}&euro;0.068/kWh{% endif %}</strong>
+            <strong>
+              {%- if system_state is defined and system_state and system_state.effective_price_eur_kwh is defined -%}
+                &euro;{{ "%.3f"|format(system_state.effective_price_eur_kwh) }}/kWh
+              {%- elif current_price_eur_kwh is defined and current_price_eur_kwh is not none -%}
+                &euro;{{ "%.3f"|format(current_price_eur_kwh) }}/kWh
+              {%- elif market is defined and market and market.get('current_price_eur_kwh') is not none -%}
+                &euro;{{ "%.3f"|format(market.get('current_price_eur_kwh')) }}/kWh
+              {%- elif market is defined and market and market.get('effective_price_eur_mwh') is not none -%}
+                &euro;{{ "%.3f"|format(market.get('effective_price_eur_mwh') / 1000.0) }}/kWh
+              {%- elif market is defined and market and market.get('cur_price') is not none -%}
+                &euro;{{ "%.3f"|format(market.get('cur_price') / 1000.0) }}/kWh
+              {%- else -%}
+                &euro;0.068/kWh
+              {%- endif -%}
+            </strong>
           </div>
+          {% if system_state is defined and system_state and system_state.interval_local_str %}
+          <div class="header-pill" title="Current 15-minute settlement interval (Europe/Vilnius)">
+            <span>Interval:</span>
+            <strong>{{ system_state.interval_local_str }}</strong>
+          </div>
+          {% endif %}
           <div class="header-pill">
             <span>Grid Limit:</span>
             <strong>{{ grid_connection_limit_kw|default(12.0) }} kW</strong>

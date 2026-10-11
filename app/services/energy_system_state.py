@@ -84,6 +84,16 @@ class EnergySystemState:
     is_stale_market_data: bool
     tomorrow_prices_status: str
     tomorrow_prices_available: bool
+    supplier_markup_eur_mwh: float
+    variable_grid_fee_eur_mwh: float
+    variable_tax_eur_mwh: float
+    total_variable_adders_eur_mwh: float
+    supplier_markup_eur_kwh: float
+    variable_grid_fee_eur_kwh: float
+    variable_tax_eur_kwh: float
+    total_variable_adders_eur_kwh: float
+    market_price_basis: str
+    data_quality: str
 
     # 3. TES Physical & Stored State (Thermodynamically Unified)
     stored_energy_kwh: float
@@ -260,39 +270,45 @@ class EnergySystemStateService:
         disp_cap = full_cap * (self.tes_params.optimizer_soc_max_fraction - self.tes_params.optimizer_soc_min_fraction)
         soc_percent = round(soc_fraction * 100.0, 1)
 
-        # 2. Market Prices & Provider Status
-        spot_price = 50.0
-        active_source = "LITGRID"
-        data_status = "LIVE DATA"
-        is_stale = False
+        # 2. Authoritative Market Price, Tariff Breakdown & Data Quality (Phase 5.11 - Stage 2)
+        from app.services.market_price_service import get_authoritative_market_price
+        auth_price = get_authoritative_market_price(
+            interval_start_utc=curr_start_utc,
+            interval_end_utc=curr_end_utc,
+            db=db,
+            tariff_params=self.tariff_params,
+            now_utc=now,
+            tz=self.tz,
+        )
+
+        spot_price = auth_price.spot_price_eur_mwh
+        spot_price_kwh = auth_price.spot_price_eur_kwh
+        eff_price = auth_price.effective_price_eur_mwh
+        eff_price_kwh = auth_price.effective_price_eur_kwh
+        active_source = auth_price.provider
+        data_status = f"{auth_price.data_quality.value} DATA" if not auth_price.is_synthetic else "SYNTHETIC BASELINE"
+        is_stale = auth_price.is_stale
+
         tom_status = "WAITING"
         tom_avail = False
-
         if db is not None:
             try:
+                from app.core.timegrid import local_day_bounds_utc
+                tomorrow_date = now_local.date() + timedelta(days=1)
+                t_start, t_end = local_day_bounds_utc(tomorrow_date, self.tz)
                 repo_p = PriceRepository(db, self.tz)
-                prices = repo_p.get_prices("LT", curr_start_utc, curr_end_utc, latest_only=True)
-                if prices:
-                    spot_price = prices[0].price_eur_mwh
-                    active_source = prices[0].source
+                t_prices = repo_p.get_prices("LT", t_start, t_end, latest_only=True)
+                if len(t_prices) >= 92:
+                    tom_status = "TOMORROW COMPLETE"
+                    tom_avail = True
+                elif len(t_prices) > 0:
+                    tom_status = "PARTIAL TOMORROW DATA"
+                    tom_avail = False
                 else:
-                    m_view = self.market_service.get_market_view_context(session=db, now_utc=now)
-                    if m_view.get("cur_price") is not None:
-                        spot_price = m_view["cur_price"]
-                    active_source = m_view.get("active_source", "LITGRID")
-                    data_status = m_view.get("data_status", "LIVE DATA")
-                    is_stale = m_view.get("is_stale", False)
-                    tom_status = m_view.get("tomorrow_stats", {}).get("status", "WAITING")
-                    tom_avail = m_view.get("tomorrow_stats", {}).get("available", False)
+                    tom_status = "TOMORROW NOT YET PUBLISHED"
+                    tom_avail = False
             except Exception as m_err:
-                log.warning("Market state retrieval fallback: %s", m_err)
-                spot_price = 45.0
-                active_source = "CACHE"
-                data_status = "DEGRADED"
-
-        eff_price = effective_price_eur_mwh(spot_price, self.tariff_params)
-        spot_price_kwh = round(spot_price / 1000.0, 4)
-        eff_price_kwh = round(eff_price / 1000.0, 4)
+                log.warning("Tomorrow price status check fallback: %s", m_err)
 
         # 3. Helical HX Extraction Capacity & Dryer Coupling
         hx_max = self.hx_model.p_max_at_temperature_kw(sand_temp_c)
@@ -414,6 +430,16 @@ class EnergySystemStateService:
             is_stale_market_data=is_stale,
             tomorrow_prices_status=tom_status,
             tomorrow_prices_available=tom_avail,
+            supplier_markup_eur_mwh=auth_price.tariff.supplier_markup_eur_mwh,
+            variable_grid_fee_eur_mwh=auth_price.tariff.variable_grid_fee_eur_mwh,
+            variable_tax_eur_mwh=auth_price.tariff.variable_tax_eur_mwh,
+            total_variable_adders_eur_mwh=auth_price.tariff.total_variable_adders_eur_mwh,
+            supplier_markup_eur_kwh=auth_price.tariff.supplier_markup_eur_kwh,
+            variable_grid_fee_eur_kwh=auth_price.tariff.variable_grid_fee_eur_kwh,
+            variable_tax_eur_kwh=auth_price.tariff.variable_tax_eur_kwh,
+            total_variable_adders_eur_kwh=auth_price.tariff.total_variable_adders_eur_kwh,
+            market_price_basis=auth_price.price_basis,
+            data_quality=auth_price.data_quality.value,
             stored_energy_kwh=round(stored_energy_kwh, 2),
             soc_fraction=round(soc_fraction, 4),
             soc_percent=soc_percent,

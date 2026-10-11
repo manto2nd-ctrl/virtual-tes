@@ -935,20 +935,31 @@ class ShadowRuntimeService:
             repo.update_session(session_obj)
             db.commit()
         elif last_exec < curr_start_utc:
-            # Boundary crossed! Catch-up or execute the completed interval
-            prev_end = last_exec + timedelta(minutes=15)
-            # Look up price for completed interval
-            repo_price = PriceRepository(db, self.tz)
-            prices = repo_price.get_prices("LT", last_exec, prev_end, latest_only=True)
-            spot_price = prices[0].price_eur_mwh if prices else 50.0  # default if not fetched
-
-            self.execute_interval_step(
-                db=db,
-                shadow_session=session_obj,
-                interval_start_utc=last_exec,
-                interval_end_utc=curr_start_utc,
-                spot_price_eur_mwh=spot_price,
-            )
+            # Boundary crossed! Catch-up or execute completed intervals in 15-minute steps
+            from app.services.market_price_service import get_authoritative_market_price
+            step_cur = last_exec
+            while step_cur < curr_start_utc:
+                step_end = min(step_cur + timedelta(minutes=15), curr_start_utc)
+                auth_p = get_authoritative_market_price(
+                    interval_start_utc=step_cur,
+                    interval_end_utc=step_end,
+                    db=db,
+                    tariff_params=self.tariff_params,
+                    now_utc=now,
+                    tz=self.tz,
+                )
+                self.execute_interval_step(
+                    db=db,
+                    shadow_session=session_obj,
+                    interval_start_utc=step_cur,
+                    interval_end_utc=step_end,
+                    spot_price_eur_mwh=auth_p.spot_price_eur_mwh,
+                    effective_price_eur_mwh=auth_p.effective_price_eur_mwh,
+                )
+                step_cur = step_end
+            session_obj.last_executed_interval_start_utc = curr_start_utc
+            repo.update_session(session_obj)
+            db.commit()
             # Re-optimize after step
             self.reoptimize(db, session_obj, trigger_reason="INTERVAL_STEP_COMPLETE", now_utc=now)
 
@@ -1005,23 +1016,19 @@ class ShadowRuntimeService:
         repo = ShadowRepository(db)
         sess = self.get_or_create_session(db)
 
-        # Real market prices
-        repo_price = PriceRepository(db, self.tz)
-        prices = repo_price.get_prices("LT", curr_start_utc, curr_end_utc, latest_only=True)
-        if prices:
-            spot_price = prices[0].price_eur_mwh
-            active_source = prices[0].source
-        else:
-            # Try fetching from market data service
-            try:
-                fetch_res = self.market_service.fetch_market_data("LT", curr_start_utc, curr_end_utc, target_resolution_minutes=15, session=db)
-                spot_price = fetch_res.intervals[0].price_eur_mwh if fetch_res.intervals else 45.0
-                active_source = fetch_res.active_source
-            except Exception:
-                spot_price = 45.0
-                active_source = "CACHE"
-
-        eff_price = calc_effective_price_eur_mwh(spot_price, self.tariff_params)
+        # Real market prices (Canonical Authoritative Lookup)
+        from app.services.market_price_service import get_authoritative_market_price
+        auth_price = get_authoritative_market_price(
+            interval_start_utc=curr_start_utc,
+            interval_end_utc=curr_end_utc,
+            db=db,
+            tariff_params=self.tariff_params,
+            now_utc=now,
+            tz=self.tz,
+        )
+        spot_price = auth_price.spot_price_eur_mwh
+        eff_price = auth_price.effective_price_eur_mwh
+        active_source = auth_price.provider
 
         # Boundary countdown
         rem_sec = max(0, int((curr_end_utc - now).total_seconds()))

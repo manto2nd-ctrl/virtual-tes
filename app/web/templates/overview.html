@@ -365,22 +365,22 @@
     </div>
     <div class="kpi-card" style="margin-bottom: 0;">
       <div class="kpi-label">Operating Electricity Cost</div>
-      <div class="kpi-value">&euro;{{ "%.2f"|format(shadow.ledger.get('today_actual_cost_eur', shadow.ledger.get('electricity_cost_today_eur', 4.18)) if shadow.ledger else 4.18) }}</div>
+      <div class="kpi-value">&euro;{{ "%.2f"|format(shadow.ledger.get('today_actual_cost_eur', shadow.ledger.get('electricity_cost_today_eur', 0.0)) if shadow.ledger else 0.0) }}</div>
       <div class="kpi-sub">TES charging + backup + blower + aux</div>
     </div>
     <div class="kpi-card" style="margin-bottom: 0;">
       <div class="kpi-label">Heat Delivered to Dryer</div>
-      <div class="kpi-value">{{ "%.1f"|format(shadow.ledger.get('today_heat_delivered_kwh', shadow.ledger.get('heat_delivered_today_kwh', 12.6)) if shadow.ledger else 12.6) }}<span class="kpi-unit">kWh</span></div>
+      <div class="kpi-value">{{ "%.1f"|format(shadow.ledger.get('today_heat_delivered_kwh', shadow.ledger.get('heat_delivered_today_kwh', 0.0)) if shadow.ledger else 0.0) }}<span class="kpi-unit">kWh</span></div>
       <div class="kpi-sub">Total useful thermal enthalpy</div>
     </div>
     <div class="kpi-card" style="margin-bottom: 0;">
       <div class="kpi-label">Water Evaporated (est.)</div>
-      <div class="kpi-value">{{ "%.1f"|format(shadow.dryer.get('water_removed_total_kg', shadow.dryer.get('batch_water_removed_kg', 2.8)) if shadow.dryer else 2.8) }}<span class="kpi-unit">kg</span></div>
+      <div class="kpi-value">{{ "%.1f"|format(system_state.dryer_water_removed_total_kg if system_state is defined and system_state else (shadow.dryer.get('water_removed_total_kg', shadow.dryer.get('batch_water_removed_kg', 0.0)) if shadow.dryer else 0.0)) }}<span class="kpi-unit">kg</span></div>
       <div class="kpi-sub">Timber drying moisture removal</div>
     </div>
     <div class="kpi-card" style="margin-bottom: 0; background: #f0fdf4; border-color: #bbf7d0;">
       <div class="kpi-label" style="color: #166534;">Net Savings vs Direct Electric</div>
-      <div class="kpi-value" style="color: #166534;">&euro;{{ "%.2f"|format(shadow.ledger.get('today_net_savings_eur', shadow.ledger.get('net_savings_today_eur', 2.34)) if shadow.ledger else 2.34) }}</div>
+      <div class="kpi-value" style="color: #166534;">&euro;{{ "%.2f"|format(shadow.ledger.get('today_net_savings_eur', shadow.ledger.get('net_savings_today_eur', 0.0)) if shadow.ledger else 0.0) }}</div>
       <div class="kpi-sub" style="color: #166534;">Inventory-adjusted (&Delta;V<sub>inv</sub>)</div>
     </div>
   </div>

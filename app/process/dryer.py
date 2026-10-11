@@ -259,8 +259,16 @@ class VirtualDryerModel:
         self,
         sand_temperature_c: float,
         dt_seconds: float = 900.0,  # 15 minutes default
+        tes_heat_delivered_kw: float | None = None,
+        available_stored_energy_kwh: float | None = None,
+        discharge_efficiency: float = 0.90,
     ) -> DryerStepResult:
-        """Execute a physical simulation step of the dryer given current TES sand temperature."""
+        """Execute a physical simulation step of the dryer given current TES sand temperature.
+
+        Enforces:
+          P_HX_delivered <= P_HX_available
+          P_HX_delivered <= available stored thermal energy / simulation step
+        """
         cfg = self.config
         alarms: list[str] = []
 
@@ -301,8 +309,16 @@ class VirtualDryerModel:
         else:
             hx_max_available_kw = 0.0
 
-        # TES delivered heat
-        tes_supplied_kw = min(total_demand_kw, hx_max_available_kw)
+        # TES delivered heat: bounded by demand, HX availability, and available stored thermal energy
+        if tes_heat_delivered_kw is not None:
+            tes_supplied_kw = min(total_demand_kw, hx_max_available_kw, max(0.0, float(tes_heat_delivered_kw)))
+        elif available_stored_energy_kwh is not None:
+            dt_h = dt_seconds / 3600.0
+            max_p_energy = (max(0.0, float(available_stored_energy_kwh)) * discharge_efficiency) / dt_h if dt_h > 0 else 0.0
+            tes_supplied_kw = min(total_demand_kw, hx_max_available_kw, max_p_energy)
+        else:
+            tes_supplied_kw = min(total_demand_kw, hx_max_available_kw)
+
         tes_pinch_derated = tes_supplied_kw < total_demand_kw and blower_running
 
         if tes_pinch_derated:

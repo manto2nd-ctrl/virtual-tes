@@ -37,6 +37,22 @@ class ThermalStateResponse(BaseModel):
     temperature_energy_curve: list[dict[str, float]]
 
 
+class ThermalConvertRequest(BaseModel):
+    mode: Literal["soc", "energy", "temp"] = Field(default="soc")
+    soc_percent: float | None = Field(default=None)
+    stored_energy_kwh: float | None = Field(default=None)
+    sand_temperature_c: float | None = Field(default=None)
+    capacity_kwh: float = Field(default=15.0)
+
+
+class ThermalConvertResponse(BaseModel):
+    soc_fraction: float
+    soc_percent: float
+    stored_energy_kwh: float
+    sand_temperature_c: float
+    hx_max_power_kw: float
+
+
 class HXCalculateRequest(BaseModel):
     soc_fraction: float = Field(default=0.50, ge=0.0, le=1.0)
     sand_temperature_c: float | None = Field(default=None)

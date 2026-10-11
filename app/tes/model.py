@@ -314,6 +314,7 @@ class TESStepResult:
     charge_limited_by: tuple[str, ...] = field(default_factory=tuple)
     discharge_limited_by: tuple[str, ...] = field(default_factory=tuple)
     soc_below_min_due_to_losses: bool = False
+    curtailed_charge_kw: float = 0.0
 
     @property
     def storage_loss_kw(self) -> float:
@@ -327,6 +328,11 @@ class TESStepResult:
     @property
     def heat_delivered_kwh(self) -> float:
         return self.discharge_power_kw * self.dt_h
+
+    @property
+    def curtailed_charge_kwh(self) -> float:
+        """Electrical energy curtailed due to capacity, heater or grid limits [kWh]."""
+        return self.curtailed_charge_kw * self.dt_h
 
 
 def _validate_power(name: str, value: float) -> None:
@@ -425,13 +431,14 @@ def compute_step(
     withdrawn = p_d / eta_d * dt_h
     soc_end = soc_after_loss + stored - withdrawn
 
-    # Clean floating-point noise at the bounds.
+    # Clean floating-point noise at the bounds and clamp strictly to physical capacity.
     if abs(soc_end - s_max) < EPS_KWH:
         soc_end = s_max
     if abs(soc_end - s_min) < EPS_KWH:
         soc_end = s_min
-    soc_end = max(0.0, soc_end)
+    soc_end = max(0.0, min(params.capacity_kwh, soc_end))
 
+    curtailed_charge_kw = max(0.0, requested_charge_kw - p_c)
     below_min_by_losses = soc_end < s_min - EPS_KWH and p_d == 0.0
 
     return TESStepResult(
@@ -452,6 +459,7 @@ def compute_step(
         charge_limited_by=tuple(charge_limits),
         discharge_limited_by=tuple(discharge_limits),
         soc_below_min_due_to_losses=below_min_by_losses,
+        curtailed_charge_kw=curtailed_charge_kw,
     )
 
 

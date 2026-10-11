@@ -108,6 +108,7 @@ class EnergySystemState:
     # 4. TES Electrical & Thermal Dispatch
     heater_requested_kw: float
     heater_actual_kw: float
+    heater_curtailed_kw: float
     hx_max_power_kw: float
     hx_delivered_heat_kw: float
     action_type: str
@@ -312,8 +313,13 @@ class EnergySystemStateService:
 
         # 3. Helical HX Extraction Capacity & Dryer Coupling
         hx_max = self.hx_model.p_max_at_temperature_kw(sand_temp_c)
+        avail_usable_energy = max(0.0, stored_energy_kwh - (self.tes_params.optimizer_soc_min_fraction * full_cap))
         try:
-            dryer_step = self.dryer_model.step(sand_temp_c)
+            dryer_step = self.dryer_model.step(
+                sand_temperature_c=sand_temp_c,
+                available_stored_energy_kwh=avail_usable_energy,
+                discharge_efficiency=self.tes_params.discharge_efficiency,
+            )
             dryer_mode = dryer_step.mode.value
             dryer_preset = dryer_step.recipe_preset.value
             dryer_demand = dryer_step.total_process_demand_kw
@@ -360,7 +366,7 @@ class EnergySystemStateService:
         p_site = self.site_params.other_loads_kw
         p_aux = self.tes_params.auxiliary_power_kw
         p_grid_limit = self.site_params.grid_connection_limit_kw
-        headroom = max(0.0, p_grid_limit - p_site - p_aux)
+        headroom = max(0.0, p_grid_limit - p_site - p_aux - backup_heat - blower_kw)
 
         if status == "RUNNING":
             act_chg = min(req_chg, self.tes_params.max_charge_power_kw, headroom)
@@ -385,7 +391,8 @@ class EnergySystemStateService:
             action_type = "STOPPED"
             reason_text = "Simulation stopped."
 
-        total_grid = act_chg + backup_heat + blower_kw + p_site + p_aux
+        curtailed_chg = max(0.0, req_chg - act_chg)
+        total_grid = min(p_grid_limit, act_chg + backup_heat + blower_kw + p_site + p_aux)
         unused_margin = max(0.0, p_grid_limit - total_grid)
 
         # 5. Worker Status
@@ -450,6 +457,7 @@ class EnergySystemStateService:
             soc_max_fraction=self.tes_params.optimizer_soc_max_fraction,
             heater_requested_kw=round(req_chg, 2),
             heater_actual_kw=round(act_chg, 2),
+            heater_curtailed_kw=round(curtailed_chg, 2),
             hx_max_power_kw=round(hx_max, 2),
             hx_delivered_heat_kw=round(hx_delivered, 2),
             action_type=action_type,

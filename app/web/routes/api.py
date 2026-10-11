@@ -61,6 +61,8 @@ from app.web.schemas import (
     HXCalculateResponse,
     ScenarioCompareRequest,
     ScenarioSaveRequest,
+    ThermalConvertRequest,
+    ThermalConvertResponse,
     ThermalStateRequest,
     ThermalStateResponse,
     VesselCalculateRequest,
@@ -165,6 +167,37 @@ def calculate_thermal_state(req: ThermalStateRequest) -> ThermalStateResponse:
         current_hx_pmax_kw=round(hx_pmax, 2),
         soc_temperature_curve=soc_temp_curve,
         temperature_energy_curve=temp_energy_curve,
+    )
+
+
+@api_router.post("/calculate/thermal-convert", response_model=ThermalConvertResponse)
+def calculate_thermal_convert(req: ThermalConvertRequest) -> ThermalConvertResponse:
+    """Canonical server-side enthalpy and thermal state converter using ThermalStateMapper."""
+    mapper = ThermalStateMapper()
+    cap = req.capacity_kwh if req.capacity_kwh > 0 else 15.0
+    if req.mode == "temp" and req.sand_temperature_c is not None:
+        soc_frac = mapper.soc_fraction_from_temperature(req.sand_temperature_c)
+        temp_c = req.sand_temperature_c
+        stored_kwh = soc_frac * cap
+    elif req.mode == "energy" and req.stored_energy_kwh is not None:
+        stored_kwh = max(0.0, min(cap, req.stored_energy_kwh))
+        soc_frac = stored_kwh / cap
+        temp_c = mapper.temperature_from_soc_fraction(soc_frac)
+    else:
+        soc_pct = req.soc_percent if req.soc_percent is not None else 50.0
+        soc_frac = max(0.0, min(1.0, soc_pct / 100.0))
+        stored_kwh = soc_frac * cap
+        temp_c = mapper.temperature_from_soc_fraction(soc_frac)
+
+    hx = HelicalAirHXModel(thermal_state_mapper=mapper)
+    hx_pmax = hx.p_max_at_temperature_kw(temp_c)
+
+    return ThermalConvertResponse(
+        soc_fraction=round(soc_frac, 4),
+        soc_percent=round(soc_frac * 100.0, 1),
+        stored_energy_kwh=round(stored_kwh, 2),
+        sand_temperature_c=round(temp_c, 1),
+        hx_max_power_kw=round(hx_pmax, 2),
     )
 
 

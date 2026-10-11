@@ -191,103 +191,42 @@
   </div>
 </dialog>
 
-<!-- ROBUST CLIENT-SIDE THERMAL CALCULATIONS & MODAL LOGIC -->
+<!-- CANONICAL SERVER-SIDE THERMAL CONVERSION & MODAL LOGIC -->
 <script>
-// Physical constants from ThermalStateMapper domain model
-const THERMAL_H_MIN = 213152.51125;
-const THERMAL_DELTA_H = 195833.0;
-const THERMAL_FULL_CAP_KWH = 15.0;
+let _thermalConvertTimeout = null;
 
-function tempFromSocFrac(s) {
-  const clamped = Math.max(0.0, Math.min(1.0, s));
-  const h = THERMAL_H_MIN + clamped * THERMAL_DELTA_H;
-  const tk = -427.0 + Math.sqrt(427.0 * 427.0 + 2.0 * h);
-  return tk - 273.15;
-}
-
-function socFracFromTemp(t) {
-  const tk = Math.max(80.0, Math.min(300.0, t)) + 273.15;
-  const h = 0.5 * tk * tk + 427.0 * tk;
-  const frac = (h - THERMAL_H_MIN) / THERMAL_DELTA_H;
-  return Math.max(0.0, Math.min(1.0, frac));
-}
-
-function handleModeChange(mode) {
+async function handleFieldInput(source) {
   const socInput = document.getElementById('start-soc');
   const energyInput = document.getElementById('start-energy');
   const tempInput = document.getElementById('start-temp');
 
-  const badgeSoc = document.getElementById('badge-start-soc');
-  const badgeEnergy = document.getElementById('badge-start-energy');
-  const badgeTemp = document.getElementById('badge-start-temp');
+  clearTimeout(_thermalConvertTimeout);
+  _thermalConvertTimeout = setTimeout(async () => {
+    try {
+      const payload = { mode: source };
+      if (source === 'soc') {
+        payload.soc_percent = parseFloat(socInput.value) || 0.0;
+      } else if (source === 'energy') {
+        payload.stored_energy_kwh = parseFloat(energyInput.value) || 0.0;
+      } else if (source === 'temp') {
+        payload.sand_temperature_c = parseFloat(tempInput.value) || 80.0;
+      }
 
-  // Reset visual styles
-  [socInput, energyInput, tempInput].forEach(inp => {
-    inp.readOnly = true;
-    inp.classList.remove('editable-field');
-    inp.classList.add('derived-field');
-  });
-
-  badgeSoc.innerText = 'Derived';
-  badgeSoc.style.background = '#e2e8f0';
-  badgeSoc.style.color = '#475569';
-
-  badgeEnergy.innerText = 'Derived';
-  badgeEnergy.style.background = '#e2e8f0';
-  badgeEnergy.style.color = '#475569';
-
-  badgeTemp.innerText = 'Derived';
-  badgeTemp.style.background = '#e2e8f0';
-  badgeTemp.style.color = '#475569';
-
-  if (mode === 'soc') {
-    socInput.readOnly = false;
-    socInput.classList.remove('derived-field');
-    socInput.classList.add('editable-field');
-    badgeSoc.innerText = 'Canonical';
-    badgeSoc.style.background = '#dbeafe';
-    badgeSoc.style.color = '#1e40af';
-    handleFieldInput('soc');
-  } else if (mode === 'energy') {
-    energyInput.readOnly = false;
-    energyInput.classList.remove('derived-field');
-    energyInput.classList.add('editable-field');
-    badgeEnergy.innerText = 'Canonical';
-    badgeEnergy.style.background = '#dbeafe';
-    badgeEnergy.style.color = '#1e40af';
-    handleFieldInput('energy');
-  } else if (mode === 'temp') {
-    tempInput.readOnly = false;
-    tempInput.classList.remove('derived-field');
-    tempInput.classList.add('editable-field');
-    badgeTemp.innerText = 'Canonical';
-    badgeTemp.style.background = '#dbeafe';
-    badgeTemp.style.color = '#1e40af';
-    handleFieldInput('temp');
-  }
-}
-
-function handleFieldInput(source) {
-  const socInput = document.getElementById('start-soc');
-  const energyInput = document.getElementById('start-energy');
-  const tempInput = document.getElementById('start-temp');
-
-  if (source === 'soc') {
-    const socPct = parseFloat(socInput.value) || 0.0;
-    const socFrac = Math.max(0.0, Math.min(1.0, socPct / 100.0));
-    energyInput.value = (socFrac * THERMAL_FULL_CAP_KWH).toFixed(2);
-    tempInput.value = tempFromSocFrac(socFrac).toFixed(1);
-  } else if (source === 'energy') {
-    const energyKwh = parseFloat(energyInput.value) || 0.0;
-    const socFrac = Math.max(0.0, Math.min(1.0, energyKwh / THERMAL_FULL_CAP_KWH));
-    socInput.value = (socFrac * 100.0).toFixed(1);
-    tempInput.value = tempFromSocFrac(socFrac).toFixed(1);
-  } else if (source === 'temp') {
-    const tempC = parseFloat(tempInput.value) || 80.0;
-    const socFrac = socFracFromTemp(tempC);
-    socInput.value = (socFrac * 100.0).toFixed(1);
-    energyInput.value = (socFrac * THERMAL_FULL_CAP_KWH).toFixed(2);
-  }
+      const resp = await fetch('/api/calculate/thermal-convert', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      if (resp.ok) {
+        const d = await resp.json();
+        if (source !== 'soc') socInput.value = d.soc_percent.toFixed(1);
+        if (source !== 'energy') energyInput.value = d.stored_energy_kwh.toFixed(2);
+        if (source !== 'temp') tempInput.value = d.sand_temperature_c.toFixed(1);
+      }
+    } catch (e) {
+      console.warn('Thermal convert error:', e);
+    }
+  }, 80);
 }
 
 // Modal Open / Close Handlers (Resilient across all browsers)

@@ -383,6 +383,11 @@ class ShadowIntervalRecord(Base):
     reason_code: Mapped[str] = mapped_column(String(64))
     created_at_utc: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow)
 
+    @property
+    def curtailed_charge_kw(self) -> float:
+        """Electrical charge power curtailed due to grid headroom, heater rating, or SOC max [kW]."""
+        return max(0.0, self.requested_charge_kw - self.actual_charge_kw)
+
 
 class ShadowEventAudit(Base):
     """Immutable audit trail of shadow session state transitions, resets, and triggers."""

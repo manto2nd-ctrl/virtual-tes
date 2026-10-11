@@ -676,11 +676,17 @@ class ShadowRuntimeService:
         # HX power limit at current sand temperature
         hx_limit_kw = self.hx_model.p_max_at_temperature_kw(sand_temp_start_c)
 
-        # Requested discharge power (bounded by process demand and HX limit)
+        # Stored thermal energy limit above optimizer reserve floor
+        s_min_kwh = self.tes_params.soc_min_kwh
+        avail_energy_kwh = max(0.0, soc_start_kwh - s_min_kwh)
+        max_p_discharge_energy = (avail_energy_kwh * self.tes_params.discharge_efficiency) / dt_h if dt_h > 0 else 0.0
+        max_discharge_avail = min(hx_limit_kw, max_p_discharge_energy, self.tes_params.max_discharge_power_kw)
+
+        # Requested discharge power (bounded by process demand, HX limit, and stored thermal energy)
         if requested_discharge_kw is not None:
-            req_dis = min(float(requested_discharge_kw), hx_limit_kw)
+            req_dis = min(float(requested_discharge_kw), max_discharge_avail)
         else:
-            req_dis = min(p_demand, hx_limit_kw)
+            req_dis = min(p_demand, max_discharge_avail)
 
         # Requested charge power from active optimizer schedule
         if requested_charge_kw is not None:
@@ -695,11 +701,18 @@ class ShadowRuntimeService:
                         req_chg = item.get("charge_kw", 0.0)
                         break
 
-        # Grid headroom constraint
+        # Grid connection limit & electrical load balance (TES charging + site + aux + blower + backup)
         p_site = self.site_params.other_loads_kw
         p_aux = self.tes_params.auxiliary_power_kw
         p_grid_limit = self.site_params.grid_connection_limit_kw
-        headroom = max(0.0, p_grid_limit - p_site - p_aux)
+
+        # Estimate process electrical loads for headroom allocation
+        blower_running = self.dryer_model.config.blower_enabled and self.dryer_model.config.airflow_m3_h > 0.1
+        p_blower_est = (self.dryer_model.config.blower_rated_power_kw * (self.dryer_model.config.airflow_m3_h / 80.0) ** 2.5) if blower_running else 0.0
+        shortfall_est = max(0.0, p_demand - req_dis)
+        p_backup_est = min(self.dryer_model.config.backup_heater_max_kw, shortfall_est) if (blower_running and self.dryer_model.config.backup_heater_enabled) else 0.0
+        non_tes_load = p_site + p_aux + p_blower_est + p_backup_est
+        headroom = max(0.0, p_grid_limit - non_tes_load)
 
         # Prices & costs
         eff_price = (
@@ -715,7 +728,7 @@ class ShadowRuntimeService:
             dis_act = 0.0
             elec_consumed_kwh = 0.0
             interval_cost = 0.0
-            grid_total_kw = p_site + p_aux
+            grid_total_kw = min(p_grid_limit, p_site + p_aux)
             soc_end_kwh = soc_start_kwh
             soc_end_fraction = soc_start_fraction
             sand_temp_end_c = sand_temp_start_c
@@ -746,15 +759,14 @@ class ShadowRuntimeService:
 
             elec_consumed_kwh = step_res.charge_power_kw * dt_h
             interval_cost = elec_consumed_kwh * (eff_price / 1000.0)
-            grid_total_kw = step_res.charge_power_kw + p_site + p_aux
+            chg_act = step_res.charge_power_kw
+            dis_act = step_res.discharge_power_kw
+            grid_total_kw = min(p_grid_limit, chg_act + p_backup_est + p_blower_est + p_site + p_aux)
 
             soc_end_kwh = step_res.soc_end_kwh
             soc_end_fraction = soc_end_kwh / self.tes_params.thermal_capacity_full_span_kwh
             sand_temp_end_c = self.thermal_mapper.temperature_from_soc_fraction(soc_end_fraction)
             standing_loss_kwh = step_res.storage_loss_kwh
-
-            chg_act = step_res.charge_power_kw
-            dis_act = step_res.discharge_power_kw
 
             if chg_act > 0.05 and dis_act > 0.05:
                 action_type = "CHARGE + SUPPLY PROCESS"
@@ -805,7 +817,11 @@ class ShadowRuntimeService:
             dryer_step = self.dryer_model.step(
                 sand_temperature_c=sand_temp_start_c,
                 dt_seconds=dt_h * 3600.0,
+                tes_heat_delivered_kw=dis_act,
+                available_stored_energy_kwh=avail_energy_kwh,
+                discharge_efficiency=self.tes_params.discharge_efficiency,
             )
+            total_dryer_grid_kw = chg_act + dryer_step.backup_heater_power_kw + dryer_step.blower_power_kw + p_site + p_aux
             self.ledger_service.record_interval(
                 db=db,
                 interval_start_utc=start_utc,
@@ -817,7 +833,7 @@ class ShadowRuntimeService:
                 backup_heater_energy_kwh=round(dryer_step.backup_heater_power_kw * dt_h, 4),
                 blower_electric_kwh=round(dryer_step.blower_power_kw * dt_h, 4),
                 auxiliary_electric_kwh=round(p_aux * dt_h, 4),
-                peak_grid_power_kw=round(chg_act + dryer_step.backup_heater_power_kw + dryer_step.blower_power_kw + p_site + p_aux, 2),
+                peak_grid_power_kw=round(min(p_grid_limit, total_dryer_grid_kw), 2),
                 avg_tes_heat_kw=round(dryer_step.heat_supplied_from_tes_kw, 2),
                 avg_dryer_demand_kw=round(dryer_step.total_process_demand_kw, 2),
                 avg_sand_temp_c=round(sand_temp_end_c, 1),

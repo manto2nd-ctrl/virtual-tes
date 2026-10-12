@@ -55,6 +55,8 @@ class EnergyLedgerService:
         tariff_eur_kwh = effective_price_eur_mwh / 1000.0
 
         baseline_cost_eur = heat_delivered_kwh * tariff_eur_kwh
+        tes_charging_cost_eur = tes_charge_kwh * tariff_eur_kwh
+        dryer_operating_cost_eur = (backup_heat_kwh + blower_kwh + aux_kwh) * tariff_eur_kwh
         total_grid_kwh = tes_charge_kwh + backup_heat_kwh + blower_kwh + aux_kwh
         actual_cost_eur = total_grid_kwh * tariff_eur_kwh
 
@@ -68,6 +70,8 @@ class EnergyLedgerService:
 
         return {
             "baseline_cost_eur": round(baseline_cost_eur, 4),
+            "tes_charging_cost_eur": round(tes_charging_cost_eur, 4),
+            "dryer_operating_cost_eur": round(dryer_operating_cost_eur, 4),
             "actual_cost_eur": round(actual_cost_eur, 4),
             "total_grid_import_kwh": round(total_grid_kwh, 4),
             "inventory_delta_eur": round(inventory_delta_eur, 4),
@@ -303,6 +307,146 @@ class EnergyLedgerService:
             db.commit()
         return added
 
+    def _compute_summary(
+        self,
+        records: list[EnergyLedgerInterval],
+        latest_record: EnergyLedgerInterval | None = None,
+        period_key: str = "custom",
+        period_label: str = "Custom",
+    ) -> dict[str, Any]:
+        """Compute audit-grade economic summary and dryer unit metrics for a set of intervals."""
+        tot_baseline = 0.0
+        tot_actual = 0.0
+        tot_savings = 0.0
+        tot_heat_kwh = 0.0
+        tot_grid_kwh = 0.0
+        tot_tes_heat_kwh = 0.0
+        tot_backup_kwh = 0.0
+        tot_water_kg = 0.0
+        tot_tes_charge_kwh = 0.0
+        tot_tes_charging_cost_eur = 0.0
+        tot_dryer_operating_cost_eur = 0.0
+        tot_inv_delta = 0.0
+
+        for r in records:
+            tariff = (r.effective_price_eur_mwh or 0.0) / 1000.0
+            tot_baseline += (r.baseline_cost_eur or 0.0)
+            tot_actual += (r.actual_cost_eur or 0.0)
+            tot_savings += (r.net_savings_eur or 0.0)
+            tot_heat_kwh += (r.dryer_thermal_delivered_kwh or 0.0)
+            tot_grid_kwh += (r.total_grid_import_kwh or 0.0)
+            chg = (r.tes_charge_energy_kwh or 0.0)
+            tot_tes_charge_kwh += chg
+            tot_tes_charging_cost_eur += chg * tariff
+            b_up = (r.backup_heater_energy_kwh or 0.0)
+            blw = (r.blower_electric_kwh or 0.0)
+            aux = (r.auxiliary_electric_kwh or 0.0)
+            tot_backup_kwh += b_up
+            tot_dryer_operating_cost_eur += (b_up + blw + aux) * tariff
+            tes_portion = max(0.0, (r.dryer_thermal_delivered_kwh or 0.0) - b_up)
+            tot_tes_heat_kwh += tes_portion
+            tot_water_kg += (r.water_removed_kg or 0.0)
+            tot_inv_delta += (r.inventory_delta_eur or 0.0)
+
+        # Remaining stored energy from latest interval
+        if latest_record is not None:
+            if latest_record.stored_energy_end_kwh is not None:
+                remaining_kwh = latest_record.stored_energy_end_kwh
+            else:
+                remaining_kwh = (latest_record.closing_soc_fraction or 0.5) * self.full_capacity_kwh
+            latest_tariff = (latest_record.effective_price_eur_mwh or 0.0) / 1000.0
+            remaining_val = remaining_kwh * latest_tariff
+            remaining_soc = latest_record.closing_soc_fraction or 0.5
+            remaining_sand_temp = latest_record.avg_sand_temp_c or 197.8
+        else:
+            remaining_kwh = 0.0
+            remaining_val = 0.0
+            remaining_soc = 0.0
+            remaining_sand_temp = 80.0
+
+        # Thermal coverage
+        thermal_coverage_pct = (
+            round((tot_tes_heat_kwh / tot_heat_kwh) * 100.0, 1) if tot_heat_kwh > 0 else 100.0
+        )
+
+        # Average tariff
+        if tot_grid_kwh > 0.0:
+            avg_tariff_eur_kwh = tot_actual / tot_grid_kwh
+        elif records:
+            avg_tariff_eur_kwh = sum((r.effective_price_eur_mwh or 0.0) / 1000.0 for r in records) / len(records)
+        else:
+            avg_tariff_eur_kwh = 0.068
+
+        # Specific thermal requirement (kWh_th / kg water)
+        # Latent heat benchmark = 2260 kJ/kg ≈ 0.628 kWh/kg ≈ 0.63 kWh/kg
+        if tot_water_kg > 0.05:
+            thermal_kwh_per_kg = round(tot_heat_kwh / tot_water_kg, 3)
+            cost_per_kg_water = round(tot_actual / tot_water_kg, 4)
+            baseline_cost_per_kg_water = round(tot_baseline / tot_water_kg, 4)
+        else:
+            thermal_kwh_per_kg = 0.63
+            cost_per_kg_water = round(thermal_kwh_per_kg * avg_tariff_eur_kwh, 4)
+            baseline_cost_per_kg_water = round(thermal_kwh_per_kg * avg_tariff_eur_kwh, 4)
+
+        # Batch metrics (Scots pine: 50% MC down to 15% MC = 35% moisture drop)
+        # 50 kg dry timber batch = 17.5 kg water removed
+        cost_per_batch_50kg = round(17.5 * cost_per_kg_water, 2)
+        baseline_cost_per_batch_50kg = round(17.5 * baseline_cost_per_kg_water, 2)
+        savings_per_batch_50kg = round(baseline_cost_per_batch_50kg - cost_per_batch_50kg, 2)
+
+        # 500 kg dry timber batch = 175.0 kg water removed
+        cost_per_batch_500kg = round(175.0 * cost_per_kg_water, 2)
+        baseline_cost_per_batch_500kg = round(175.0 * baseline_cost_per_kg_water, 2)
+        savings_per_batch_500kg = round(baseline_cost_per_batch_500kg - cost_per_batch_500kg, 2)
+
+        # 1 m³ Scots pine timber (density ~450 kg/m³ dry => 157.5 kg water removed)
+        cost_per_m3_timber = round(157.5 * cost_per_kg_water, 2)
+        baseline_cost_per_m3_timber = round(157.5 * baseline_cost_per_kg_water, 2)
+        savings_per_m3_timber = round(baseline_cost_per_m3_timber - cost_per_m3_timber, 2)
+
+        return {
+            "period_key": period_key,
+            "period_label": period_label,
+            "interval_count": len(records),
+            # 8 Core Questions:
+            "tes_electricity_used_kwh": round(tot_tes_charge_kwh, 2),
+            "tes_charging_cost_eur": round(tot_tes_charging_cost_eur, 2),
+            "total_heat_delivered_kwh": round(tot_heat_kwh, 2),
+            "water_removed_kg": round(tot_water_kg, 2),
+            "water_removed_est_kg": round(tot_water_kg, 1),
+            "dryer_operating_cost_eur": round(tot_dryer_operating_cost_eur, 2),
+            "total_actual_cost_eur": round(tot_actual, 2),
+            "electricity_cost_today_eur": round(tot_actual, 2),
+            "today_actual_cost_eur": round(tot_actual, 2),
+            "total_baseline_cost_eur": round(tot_baseline, 2),
+            "total_inventory_delta_eur": round(tot_inv_delta, 2),
+            "total_net_savings_eur": round(tot_savings, 2),
+            "today_net_savings_eur": round(tot_savings, 2),
+            "net_savings_today_eur": round(tot_savings, 2),
+            "remaining_stored_energy_kwh": round(remaining_kwh, 2),
+            "remaining_stored_energy_value_eur": round(remaining_val, 2),
+            "remaining_soc_fraction": round(remaining_soc, 3),
+            "remaining_sand_temp_c": round(remaining_sand_temp, 1),
+            # Auxiliary & coverage
+            "tes_charge_kwh": round(tot_tes_charge_kwh, 2),
+            "total_grid_import_kwh": round(tot_grid_kwh, 2),
+            "thermal_coverage_percent": thermal_coverage_pct,
+            "specific_drying_cost_eur_kg": cost_per_kg_water,
+            # Specific Dryer Unit Economics
+            "thermal_energy_per_kg_water_kwh": thermal_kwh_per_kg,
+            "cost_per_kg_water_eur": cost_per_kg_water,
+            "baseline_cost_per_kg_water_eur": baseline_cost_per_kg_water,
+            "cost_per_completed_batch_eur": cost_per_batch_50kg,
+            "baseline_cost_per_completed_batch_eur": baseline_cost_per_batch_50kg,
+            "savings_per_completed_batch_eur": savings_per_batch_50kg,
+            "cost_per_completed_batch_500kg_eur": cost_per_batch_500kg,
+            "baseline_cost_per_completed_batch_500kg_eur": baseline_cost_per_batch_500kg,
+            "savings_per_completed_batch_500kg_eur": savings_per_batch_500kg,
+            "cost_per_m3_timber_eur": cost_per_m3_timber,
+            "baseline_cost_per_m3_timber_eur": baseline_cost_per_m3_timber,
+            "savings_per_m3_timber_eur": savings_per_m3_timber,
+        }
+
     def get_ledger_history(
         self,
         db: Session,
@@ -318,55 +462,71 @@ class EnergyLedgerService:
 
         now_utc = utcnow()
         now_local = now_utc.astimezone(self.tz)
+        start_today_utc = now_local.replace(hour=0, minute=0, second=0, microsecond=0).astimezone(timezone.utc)
+        start_7d_utc = now_utc - timedelta(days=7)
+        start_30d_utc = now_utc - timedelta(days=30)
 
-        if period == "today":
-            start_local = now_local.replace(hour=0, minute=0, second=0, microsecond=0)
-            cutoff_utc = start_local.astimezone(timezone.utc)
-        elif period == "7d":
-            cutoff_utc = now_utc - timedelta(days=7)
-        elif period == "30d":
-            cutoff_utc = now_utc - timedelta(days=30)
-        else:
-            cutoff_utc = now_utc - timedelta(days=365)
-
-        records = db.execute(
+        all_records = db.execute(
             select(EnergyLedgerInterval)
-            .where(EnergyLedgerInterval.interval_start_utc >= cutoff_utc)
             .order_by(desc(EnergyLedgerInterval.interval_start_utc))
-            .limit(limit)
+            .limit(5000)
         ).scalars().all()
 
-        rows: list[dict[str, Any]] = []
-        tot_baseline = 0.0
-        tot_actual = 0.0
-        tot_savings = 0.0
-        tot_heat_kwh = 0.0
-        tot_grid_kwh = 0.0
-        tot_tes_heat_kwh = 0.0
-        tot_backup_kwh = 0.0
-        tot_water_kg = 0.0
-        tot_tes_charge_kwh = 0.0
+        latest_record = all_records[0] if all_records else None
 
-        for r in records:
+        records_today = [r for r in all_records if r.interval_start_utc >= start_today_utc]
+        records_7d = [r for r in all_records if r.interval_start_utc >= start_7d_utc]
+        records_30d = [r for r in all_records if r.interval_start_utc >= start_30d_utc]
+        records_all = all_records
+
+        summary_today = self._compute_summary(records_today, latest_record, "today", "Today")
+        summary_7d = self._compute_summary(records_7d, latest_record, "7d", "Last 7 Days")
+        summary_30d = self._compute_summary(records_30d, latest_record, "30d", "Last 30 Days")
+        summary_all = self._compute_summary(records_all, latest_record, "all", "Lifetime (All Records)")
+
+        period_comparison = {
+            "today": summary_today,
+            "7d": summary_7d,
+            "30d": summary_30d,
+            "all": summary_all,
+        }
+
+        if period == "today":
+            selected_records = records_today
+            active_summary = summary_today
+        elif period == "7d":
+            selected_records = records_7d
+            active_summary = summary_7d
+        elif period == "30d":
+            selected_records = records_30d
+            active_summary = summary_30d
+        else:
+            selected_records = records_all
+            active_summary = summary_all
+
+        display_records = selected_records[:limit]
+        rows: list[dict[str, Any]] = []
+
+        for r in display_records:
             dt_loc = r.interval_start_utc.astimezone(self.tz)
             time_str = dt_loc.strftime("%Y-%m-%d %H:%M")
 
-            tot_baseline += r.baseline_cost_eur
-            tot_actual += r.actual_cost_eur
-            tot_savings += r.net_savings_eur
-            tot_heat_kwh += r.dryer_thermal_delivered_kwh
-            tot_grid_kwh += r.total_grid_import_kwh
-            tot_tes_charge_kwh += (r.tes_charge_energy_kwh or 0.0)
-            tot_backup_kwh += r.backup_heater_energy_kwh
-            # TES heat portion = total delivered - backup
-            tes_portion = max(0.0, r.dryer_thermal_delivered_kwh - r.backup_heater_energy_kwh)
-            tot_tes_heat_kwh += tes_portion
-            tot_water_kg += (r.water_removed_kg or 0.0)
-
             dur_hours = (r.duration_minutes / 60.0) if (r.duration_minutes and r.duration_minutes > 0) else 0.25
-            tes_chg_kw = round((r.tes_charge_energy_kwh or 0.0) / dur_hours, 2)
-            heat_del_kw = round((r.dryer_thermal_delivered_kwh or 0.0) / dur_hours, 2)
-            backup_kw = round((r.backup_heater_energy_kwh or 0.0) / dur_hours, 2)
+            tariff_eur_kwh = (r.effective_price_eur_mwh or 0.0) / 1000.0
+
+            tes_chg_kwh = r.tes_charge_energy_kwh or 0.0
+            tes_chg_kw = round(tes_chg_kwh / dur_hours, 2)
+            tes_chg_cost = round(tes_chg_kwh * tariff_eur_kwh, 4)
+
+            heat_del_kwh = r.dryer_thermal_delivered_kwh or 0.0
+            heat_del_kw = round(heat_del_kwh / dur_hours, 2)
+
+            backup_kwh = r.backup_heater_energy_kwh or 0.0
+            backup_kw = round(backup_kwh / dur_hours, 2)
+
+            blower_kwh = r.blower_electric_kwh or 0.0
+            aux_kwh = r.auxiliary_electric_kwh or 0.0
+            dryer_op_cost = round((backup_kwh + blower_kwh + aux_kwh) * tariff_eur_kwh, 4)
 
             stored_start = (
                 round(r.stored_energy_start_kwh, 2)
@@ -379,6 +539,9 @@ class EnergyLedgerService:
                 else round(r.closing_soc_fraction * self.full_capacity_kwh, 2)
             )
 
+            water_kg = r.water_removed_kg or 0.0
+            specific_thermal = round(heat_del_kwh / water_kg, 3) if water_kg > 0.01 else 0.63
+
             rows.append({
                 "id": r.id,
                 "run_id": r.shadow_session_id or "-",
@@ -390,21 +553,23 @@ class EnergyLedgerService:
                 "duration_minutes": r.duration_minutes,
                 "spot_price_eur_mwh": round(r.spot_price_eur_mwh, 2),
                 "effective_price_eur_mwh": round(r.effective_price_eur_mwh, 2),
-                "effective_price_eur_kwh": round(r.effective_price_eur_mwh / 1000.0, 4),
+                "effective_price_eur_kwh": round(tariff_eur_kwh, 4),
                 "optimization_price_basis": r.optimization_price_basis or "EFFECTIVE_VARIABLE_PRICE",
                 "market_source": r.market_source or "LITGRID",
                 "model_version": r.model_version or "gen0-shadow-v1",
-                "heat_delivered_kwh": round(r.dryer_thermal_delivered_kwh, 2),
+                "heat_delivered_kwh": round(heat_del_kwh, 2),
                 "heat_delivered_kw": heat_del_kw,
-                "dryer_thermal_delivered_kwh": round(r.dryer_thermal_delivered_kwh, 3),
+                "dryer_thermal_delivered_kwh": round(heat_del_kwh, 3),
                 "dryer_heat_demand_kw": round(r.dryer_heat_demand_kw if r.dryer_heat_demand_kw is not None else (r.avg_dryer_demand_kw or 1.5), 2),
                 "unmet_heat_kw": round(r.unmet_heat_kw or 0.0, 2),
-                "tes_charge_energy_kwh": round(r.tes_charge_energy_kwh or 0.0, 2),
+                "tes_charge_energy_kwh": round(tes_chg_kwh, 2),
                 "tes_charge_kw": tes_chg_kw,
-                "backup_heater_energy_kwh": round(r.backup_heater_energy_kwh or 0.0, 3),
+                "tes_charging_cost_eur": round(tes_chg_cost, 3),
+                "dryer_operating_cost_eur": round(dryer_op_cost, 3),
+                "backup_heater_energy_kwh": round(backup_kwh, 3),
                 "backup_heater_kw": backup_kw,
-                "blower_electric_kwh": round(r.blower_electric_kwh or 0.0, 3),
-                "auxiliary_electric_kwh": round(r.auxiliary_electric_kwh or 0.0, 3),
+                "blower_electric_kwh": round(blower_kwh, 3),
+                "auxiliary_electric_kwh": round(aux_kwh, 3),
                 "standing_loss_kwh": round(r.standing_loss_kwh or 0.0, 4),
                 "grid_import_kwh": round(r.total_grid_import_kwh, 2),
                 "soc_start_fraction": round(r.opening_soc_fraction, 3),
@@ -427,45 +592,18 @@ class EnergyLedgerService:
                     if (r.moisture_content_percent is not None and r.moisture_content_percent > 0.0)
                     else None
                 ),
-
-                "water_removed_kg": round(r.water_removed_kg or 0.0, 2),
+                "water_removed_kg": round(water_kg, 2),
+                "thermal_energy_per_kg_water_kwh": specific_thermal,
                 "provenance": r.data_provenance,
                 "operating_mode": r.operating_mode,
             })
 
-        thermal_coverage_pct = (
-            round((tot_tes_heat_kwh / tot_heat_kwh) * 100.0, 1) if tot_heat_kwh > 0 else 100.0
-        )
-        specific_cost_eur_kg = (
-            round(tot_actual / tot_water_kg, 4) if tot_water_kg > 0.1 else 0.0
-        )
-        tot_inv_delta = sum(r.inventory_delta_eur for r in records)
-
-        summary = {
-            "electricity_cost_today_eur": round(tot_actual, 2),
-            "today_actual_cost_eur": round(tot_actual, 2),
-            "total_actual_cost_eur": round(tot_actual, 2),
-            "heat_delivered_today_kwh": round(tot_heat_kwh, 2),
-            "today_heat_delivered_kwh": round(tot_heat_kwh, 2),
-            "total_heat_delivered_kwh": round(tot_heat_kwh, 2),
-            "tes_electricity_used_kwh": round(tot_tes_charge_kwh, 2),
-            "tes_charge_kwh": round(tot_tes_charge_kwh, 2),
-            "total_grid_import_kwh": round(tot_grid_kwh, 2),
-            "total_baseline_cost_eur": round(tot_baseline, 2),
-            "total_inventory_delta_eur": round(tot_inv_delta, 2),
-            "water_removed_est_kg": round(tot_water_kg, 1),
-            "net_savings_today_eur": round(tot_savings, 2),
-            "today_net_savings_eur": round(tot_savings, 2),
-            "total_net_savings_eur": round(tot_savings, 2),
-            "thermal_coverage_percent": thermal_coverage_pct,
-            "specific_drying_cost_eur_kg": specific_cost_eur_kg,
-        }
-
         return {
             "period": period,
             "record_count": len(rows),
-            "total_intervals": len(rows),
-            "summary": summary,
+            "total_intervals": len(selected_records),
+            "summary": active_summary,
+            "period_comparison": period_comparison,
             "rows": rows,
             "intervals": rows,
         }
@@ -509,6 +647,9 @@ class EnergyLedgerService:
             "Market Source",
             "Model Version",
             "Provenance",
+            "TES Charging Cost (EUR)",
+            "Dryer Operating Cost (EUR)",
+            "Specific Thermal (kWh/kg)",
         ])
 
         for r in history["rows"]:
@@ -549,6 +690,9 @@ class EnergyLedgerService:
                 r.get("market_source", "LITGRID"),
                 r.get("model_version", "gen0-shadow-v1"),
                 r["provenance"],
+                r.get("tes_charging_cost_eur", 0.0),
+                r.get("dryer_operating_cost_eur", 0.0),
+                r.get("thermal_energy_per_kg_water_kwh", 0.63),
             ])
 
         return output.getvalue()

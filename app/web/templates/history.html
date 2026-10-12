@@ -5,15 +5,25 @@
 {% block page_subtitle %}15-Minute Settlement Ledger &bull; Inventory-Adjusted Savings vs. Direct Electric Heating{% endblock %}
 
 {% block content %}
-<!-- Top Provenance & Ledger Banner -->
-<div class="engineering-banner">
-  <div>
-    <strong>15-MINUTE SETTLEMENT AUDIT LEDGER:</strong> Aggregates thermal and electrical power flows against Lithuanian Day-Ahead market settlement intervals (Europe/Vilnius display, UTC storage). Direct electric baseline calculates equivalent useful thermal energy delivered at the exact moment of demand.
+<!-- TOP PROVENANCE & LEDGER BANNER -->
+<div class="engineering-banner" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 14px; background: #0f172a; color: #f8fafc; border-left: 4px solid #0284c7; padding: 14px 18px; border-radius: 6px; margin-bottom: 20px;">
+  <div style="flex: 1; min-width: 280px;">
+    <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 4px;">
+      <span class="badge" style="background: #0284c7; color: #ffffff; font-weight: 700; font-size: 0.72rem; letter-spacing: 0.5px; padding: 3px 8px; border-radius: 4px;">
+        VIRTUAL ESTIMATED SAVINGS
+      </span>
+      <span style="font-size: 0.82rem; font-weight: 600; color: #94a3b8;">15-MINUTE SETTLEMENT AUDIT LEDGER</span>
+    </div>
+    <div style="font-size: 0.78rem; color: #cbd5e1; line-height: 1.45;">
+      Physical Gen0 hardware remains disconnected (zero physical commands). Financial savings and physical performance are derived from virtual thermodynamic simulation against Lithuanian Day-Ahead market settlement intervals (UTC database keys, Europe/Vilnius display). Direct electric baseline calculates equivalent useful thermal energy delivered at the exact moment of demand. Unmet heat is strictly excluded from baseline savings.
+    </div>
   </div>
-  <a href="/api/ledger/export?range={{ range }}&tz_str={{ tz_view }}" class="btn btn-outline btn-sm" download>
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
-    Export Audit CSV
-  </a>
+  <div>
+    <a href="/api/ledger/export?range={{ range }}&tz_str={{ tz_view }}" style="background: #1e293b; color: #f8fafc; border: 1px solid #475569; display: inline-flex; align-items: center; gap: 6px; padding: 7px 14px; border-radius: 4px; font-weight: 600; font-size: 0.78rem; text-decoration: none;" download>
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+      Export Audit CSV
+    </a>
+  </div>
 </div>
 
 <!-- FILTER CONTROLS BAR -->
@@ -25,22 +35,30 @@
       <a href="/dashboard/history?range=today&tz_view={{ tz_view }}" class="btn {% if range == 'today' %}btn-primary{% else %}btn-outline{% endif %} btn-sm">Today</a>
       <a href="/dashboard/history?range=7d&tz_view={{ tz_view }}" class="btn {% if range == '7d' %}btn-primary{% else %}btn-outline{% endif %} btn-sm">Last 7 Days</a>
       <a href="/dashboard/history?range=30d&tz_view={{ tz_view }}" class="btn {% if range == '30d' %}btn-primary{% else %}btn-outline{% endif %} btn-sm">Last 30 Days</a>
-      <a href="/dashboard/history?range=all&tz_view={{ tz_view }}" class="btn {% if range == 'all' %}btn-primary{% else %}btn-outline{% endif %} btn-sm">All Records</a>
+      <a href="/dashboard/history?range=all&tz_view={{ tz_view }}" class="btn {% if range == 'all' %}btn-primary{% else %}btn-outline{% endif %} btn-sm">Lifetime (All Records)</a>
     </div>
 
-    <!-- Timezone Selector -->
-    <div style="display: flex; align-items: center; gap: 8px;">
+    <!-- Timezone & Provenance Status -->
+    <div style="display: flex; align-items: center; gap: 10px;">
       <span style="font-size: 0.78rem; font-weight: 600; color: #64748b;">Timezone:</span>
       <span class="badge badge-slate" style="font-size: 0.75rem;">Europe/Vilnius (EET/EEST)</span>
+      <span class="badge" style="background: #e0f2fe; color: #0369a1; font-weight: 600; font-size: 0.75rem;">VIRTUAL TWIN</span>
     </div>
   </div>
 </div>
 
-<!-- AUDIT SUMMARY KPI CARDS -->
-<div class="kpi-grid" style="grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));">
-  <div class="kpi-card">
+<!-- EXECUTIVE KPI CARDS: ANSWERING ALL 8 ECONOMIC QUESTIONS -->
+<div style="margin-bottom: 8px;">
+  <div style="font-size: 0.78rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: #64748b; margin-bottom: 8px;">
+    Economic Accounting Summary &bull; Selected Range: <span style="color: #0f172a;">{{ range|upper }}</span>
+  </div>
+</div>
+
+<div class="kpi-grid" style="grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 14px; margin-bottom: 24px;">
+  <!-- Question 1 & 2: TES Electricity & Charging Cost -->
+  <div class="kpi-card" style="border-top: 3px solid #2563eb;">
     <div class="kpi-top">
-      <div class="kpi-label">Electricity Used by TES</div>
+      <div class="kpi-label">1 &bull; Electricity Used by TES</div>
       <div class="kpi-icon" style="color: #2563eb;">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"></path></svg>
       </div>
@@ -48,51 +66,71 @@
     <div class="kpi-value" style="color: #2563eb;">
       {{ "%.2f"|format(ledger_summary.tes_electricity_used_kwh|default(0.0)) }}<span class="kpi-unit">kWh</span>
     </div>
-    <div class="kpi-sub">Total TES charging electricity</div>
+    <div class="kpi-sub" style="font-weight: 600; color: #1e40af;">
+      2 &bull; Charging Cost: &euro;{{ "%.2f"|format(ledger_summary.tes_charging_cost_eur|default(0.0)) }}
+    </div>
   </div>
 
-  <div class="kpi-card">
+  <!-- Question 3: Useful Process Heat Delivered -->
+  <div class="kpi-card" style="border-top: 3px solid #ea580c;">
     <div class="kpi-top">
-      <div class="kpi-label">Heat Delivered (Process)</div>
+      <div class="kpi-label">3 &bull; Useful Heat Delivered</div>
       <div class="kpi-icon orange">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 2.5z"></path></svg>
       </div>
     </div>
-    <div class="kpi-value">
+    <div class="kpi-value" style="color: #ea580c;">
       {{ "%.2f"|format(ledger_summary.total_heat_delivered_kwh|default(0.0)) }}<span class="kpi-unit">kWh</span>
     </div>
-    <div class="kpi-sub">Total useful thermal enthalpy</div>
+    <div class="kpi-sub">TES Coverage: {{ "%.1f"|format(ledger_summary.thermal_coverage_percent|default(100.0)) }}%</div>
   </div>
 
-  <div class="kpi-card">
+  <!-- Question 4: Water Removed -->
+  <div class="kpi-card" style="border-top: 3px solid #0284c7;">
     <div class="kpi-top">
-      <div class="kpi-label">Operating Electricity Cost</div>
-      <div class="kpi-icon">
+      <div class="kpi-label">4 &bull; Water Removed</div>
+      <div class="kpi-icon" style="color: #0284c7;">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2.69l5.66 5.66a8 8 0 1 1-11.31 0z"></path></svg>
+      </div>
+    </div>
+    <div class="kpi-value" style="color: #0284c7;">
+      {{ "%.2f"|format(ledger_summary.water_removed_kg|default(0.0)) }}<span class="kpi-unit">kg</span>
+    </div>
+    <div class="kpi-sub">Specific: {{ "%.2f"|format(ledger_summary.thermal_energy_per_kg_water_kwh|default(0.63)) }} kWh/kg H<sub>2</sub>O</div>
+  </div>
+
+  <!-- Question 5: Dryer Operating Cost -->
+  <div class="kpi-card" style="border-top: 3px solid #4f46e5;">
+    <div class="kpi-top">
+      <div class="kpi-label">5 &bull; Total Operating Cost</div>
+      <div class="kpi-icon" style="color: #4f46e5;">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon></svg>
       </div>
     </div>
-    <div class="kpi-value">
+    <div class="kpi-value" style="color: #4f46e5;">
       &euro;{{ "%.2f"|format(ledger_summary.total_actual_cost_eur|default(0.0)) }}
     </div>
-    <div class="kpi-sub">TES charge + backup + blower + aux</div>
+    <div class="kpi-sub">Dryer Parasitics: &euro;{{ "%.2f"|format(ledger_summary.dryer_operating_cost_eur|default(0.0)) }}</div>
   </div>
 
-  <div class="kpi-card">
+  <!-- Question 6: Direct Electric Baseline Cost -->
+  <div class="kpi-card" style="border-top: 3px solid #d97706;">
     <div class="kpi-top">
-      <div class="kpi-label">Direct Electric Baseline</div>
+      <div class="kpi-label">6 &bull; Direct-Electric Baseline</div>
       <div class="kpi-icon amber">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>
       </div>
     </div>
-    <div class="kpi-value">
+    <div class="kpi-value" style="color: #d97706;">
       &euro;{{ "%.2f"|format(ledger_summary.total_baseline_cost_eur|default(0.0)) }}
     </div>
-    <div class="kpi-sub">Unshifted instantaneous heating</div>
+    <div class="kpi-sub">Equivalent heat without storage</div>
   </div>
 
-  <div class="kpi-card" style="background: #f0fdf4; border-color: #bbf7d0;">
+  <!-- Question 7: How Much Was Saved? -->
+  <div class="kpi-card" style="background: #f0fdf4; border: 1px solid #bbf7d0; border-top: 3px solid #16a34a;">
     <div class="kpi-top">
-      <div class="kpi-label" style="color: #166534;">Net Savings (Adjusted)</div>
+      <div class="kpi-label" style="color: #166534; font-weight: 700;">7 &bull; Net Virtual Savings</div>
       <div class="kpi-icon green">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"></polyline></svg>
       </div>
@@ -102,15 +140,176 @@
     </div>
     <div class="kpi-sub" style="color: #166534;">Includes &Delta;V<sub>inv</sub>: &euro;{{ "%.2f"|format(ledger_summary.total_inventory_delta_eur|default(0.0)) }}</div>
   </div>
+
+  <!-- Question 8: Remaining TES Stored Energy and Valuation -->
+  <div class="kpi-card" style="border-top: 3px solid #0f766e;">
+    <div class="kpi-top">
+      <div class="kpi-label">8 &bull; Remaining TES Storage</div>
+      <div class="kpi-icon" style="color: #0f766e;">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="7" width="20" height="14" rx="2" ry="2"></rect><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"></path></svg>
+      </div>
+    </div>
+    <div class="kpi-value" style="color: #0f766e;">
+      {{ "%.2f"|format(ledger_summary.remaining_stored_energy_kwh|default(7.50)) }}<span class="kpi-unit">kWh</span>
+    </div>
+    <div class="kpi-sub" style="color: #0f766e; font-weight: 600;">
+      Value: &euro;{{ "%.2f"|format(ledger_summary.remaining_stored_energy_value_eur|default(0.50)) }} ({{ "%.1f"|format((ledger_summary.remaining_soc_fraction|default(0.5))*100) }}% &bull; {{ "%.1f"|format(ledger_summary.remaining_sand_temp_c|default(197.8)) }}&deg;C)
+    </div>
+  </div>
+</div>
+
+<!-- MULTI-PERIOD SAVINGS BREAKDOWN TABLE (Today, 7 days, 30 days, Lifetime) -->
+<div class="card" style="margin-bottom: 24px;">
+  <div class="card-header" style="display: flex; justify-content: space-between; align-items: center;">
+    <div>
+      <h3 class="card-title" style="display: flex; align-items: center; gap: 8px;">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>
+        Multi-Period Economic Accounting &bull; Today, 7 Days, 30 Days &amp; Lifetime
+      </h3>
+      <div style="font-size: 0.76rem; color: #64748b; margin-top: 2px;">
+        Authoritative side-by-side comparison across standardized time horizons. All net savings are inventory-adjusted and labeled VIRTUAL ESTIMATED SAVINGS.
+      </div>
+    </div>
+    <span class="badge" style="background: #0284c7; color: #ffffff; font-weight: 700; font-size: 0.70rem;">
+      VIRTUAL ESTIMATED SAVINGS
+    </span>
+  </div>
+
+  <div class="table-container" style="overflow-x: auto;">
+    <table class="engineering-table" style="font-size: 0.75rem; width: 100%;">
+      <thead>
+        <tr>
+          <th style="padding: 6px 8px;">Horizon</th>
+          <th class="num-col" style="padding: 6px 8px;">Int.</th>
+          <th class="num-col" style="padding: 6px 8px;">TES Used</th>
+          <th class="num-col" style="padding: 6px 8px;">TES Chg (&euro;)</th>
+          <th class="num-col" style="padding: 6px 8px;">Heat Deliv.</th>
+          <th class="num-col" style="padding: 6px 8px;">Dryer Oper. (&euro;)</th>
+          <th class="num-col" style="padding: 6px 8px;">Total Oper. (&euro;)</th>
+          <th class="num-col" style="padding: 6px 8px;">Baseline (&euro;)</th>
+          <th class="num-col" style="padding: 6px 8px;">&Delta;V<sub>inv</sub> (&euro;)</th>
+          <th class="num-col" style="padding: 6px 8px; color: #166534; font-weight: 700;">Net Virtual Savings</th>
+          <th class="num-col" style="padding: 6px 8px;">Water Rem.</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for p_key, p_label in [('today', 'Today'), ('7d', 'Last 7 Days'), ('30d', 'Last 30 Days'), ('all', 'Lifetime (All Records)')] %}
+        {% set p_data = period_comparison[p_key]|default({}) %}
+        <tr {% if range == p_key %}style="background: #f8fafc; font-weight: 600;"{% endif %}>
+          <td style="padding: 6px 8px;">
+            <strong>{{ p_label }}</strong>
+            {% if range == p_key %}
+            <span class="badge badge-blue" style="font-size: 0.62rem; margin-left: 4px;">VIEW</span>
+            {% endif %}
+          </td>
+          <td class="num-col" style="padding: 6px 8px;">{{ p_data.interval_count|default(0) }}</td>
+          <td class="num-col" style="padding: 6px 8px; color: #2563eb;">{{ "%.2f"|format(p_data.tes_electricity_used_kwh|default(0.0)) }} kWh</td>
+          <td class="num-col" style="padding: 6px 8px;">&euro;{{ "%.2f"|format(p_data.tes_charging_cost_eur|default(0.0)) }}</td>
+          <td class="num-col" style="padding: 6px 8px; color: #ea580c;">{{ "%.2f"|format(p_data.total_heat_delivered_kwh|default(0.0)) }} kWh</td>
+          <td class="num-col" style="padding: 6px 8px;">&euro;{{ "%.2f"|format(p_data.dryer_operating_cost_eur|default(0.0)) }}</td>
+          <td class="num-col" style="padding: 6px 8px;">&euro;{{ "%.2f"|format(p_data.total_actual_cost_eur|default(0.0)) }}</td>
+          <td class="num-col" style="padding: 6px 8px; color: #d97706;">&euro;{{ "%.2f"|format(p_data.total_baseline_cost_eur|default(0.0)) }}</td>
+          <td class="num-col" style="padding: 6px 8px; color: {% if (p_data.total_inventory_delta_eur|default(0.0)) >= 0 %}#16a34a{% else %}#dc2626{% endif %};">
+            &euro;{{ "%.2f"|format(p_data.total_inventory_delta_eur|default(0.0)) }}
+          </td>
+          <td class="num-col" style="padding: 6px 8px; color: #166534; font-weight: 700; font-size: 0.85rem;">
+            &euro;{{ "%.2f"|format(p_data.total_net_savings_eur|default(0.0)) }}
+          </td>
+          <td class="num-col" style="padding: 6px 8px; color: #0284c7;">{{ "%.1f"|format(p_data.water_removed_kg|default(0.0)) }} kg</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- DRYER SPECIFIC UNIT ECONOMICS & BATCH COSTING CARD -->
+<div class="card" style="margin-bottom: 24px;">
+  <div class="card-header" style="display: flex; justify-content: space-between; align-items: center;">
+    <div>
+      <h3 class="card-title" style="display: flex; align-items: center; gap: 8px;">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"></path><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"></path></svg>
+        Virtual Dryer V1 &bull; Unit Economics &amp; Batch Costing
+      </h3>
+      <div style="font-size: 0.76rem; color: #64748b; margin-top: 2px;">
+        Engineering unit rates per unit moisture removed, reference Scots pine experimental batches, and cubic meter dried timber.
+      </div>
+    </div>
+    <span class="badge badge-slate" style="font-size: 0.70rem;">GEN0 WOOD DRYER MODEL</span>
+  </div>
+
+  <div style="padding: 16px 20px;">
+    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 16px;">
+      <!-- Unit Rate 1: kWh_th per kg water -->
+      <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 14px 16px;">
+        <div style="font-size: 0.72rem; font-weight: 700; text-transform: uppercase; color: #64748b; margin-bottom: 4px;">
+          Specific Thermal Energy
+        </div>
+        <div style="font-size: 1.45rem; font-weight: 700; color: #ea580c; line-height: 1.2;">
+          {{ "%.2f"|format(ledger_summary.thermal_energy_per_kg_water_kwh|default(0.63)) }} <span style="font-size: 0.82rem; font-weight: 500; color: #64748b;">kWh<sub>th</sub> / kg H<sub>2</sub>O</span>
+        </div>
+        <div style="font-size: 0.74rem; color: #64748b; margin-top: 6px;">
+          Latent vaporization benchmark: ~0.63 kWh/kg (2260 kJ/kg). Sensible air heat &amp; kiln efficiency accounted.
+        </div>
+      </div>
+
+      <!-- Unit Rate 2: EUR per kg water -->
+      <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 14px 16px;">
+        <div style="font-size: 0.72rem; font-weight: 700; text-transform: uppercase; color: #64748b; margin-bottom: 4px;">
+          Specific Drying Cost
+        </div>
+        <div style="font-size: 1.45rem; font-weight: 700; color: #0284c7; line-height: 1.2;">
+          &euro;{{ "%.4f"|format(ledger_summary.cost_per_kg_water_eur|default(0.0428)) }} <span style="font-size: 0.82rem; font-weight: 500; color: #64748b;">/ kg H<sub>2</sub>O</span>
+        </div>
+        <div style="font-size: 0.74rem; color: #64748b; margin-top: 6px;">
+          Baseline without storage: &euro;{{ "%.4f"|format(ledger_summary.baseline_cost_per_kg_water_eur|default(0.0428)) }} / kg H<sub>2</sub>O
+        </div>
+      </div>
+
+      <!-- Unit Rate 3: EUR per completed batch -->
+      <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 14px 16px;">
+        <div style="font-size: 0.72rem; font-weight: 700; text-transform: uppercase; color: #64748b; margin-bottom: 4px;">
+          Cost Per Completed Batch
+        </div>
+        <div style="font-size: 1.20rem; font-weight: 700; color: #0f172a; line-height: 1.3;">
+          50 kg batch: <span style="color: #166534;">&euro;{{ "%.2f"|format(ledger_summary.cost_per_completed_batch_eur|default(0.75)) }}</span>
+        </div>
+        <div style="font-size: 0.76rem; color: #475569; margin-top: 3px;">
+          (17.5 kg H<sub>2</sub>O removed, 50% &rarr; 15% MC &bull; Saves &euro;{{ "%.2f"|format(ledger_summary.savings_per_completed_batch_eur|default(0.0)) }})
+        </div>
+        <div style="font-size: 0.85rem; font-weight: 600; color: #475569; margin-top: 6px; border-top: 1px dashed #cbd5e1; pt: 4px;">
+          500 kg batch: <span style="color: #0f172a;">&euro;{{ "%.2f"|format(ledger_summary.cost_per_completed_batch_500kg_eur|default(7.50)) }}</span> (175 kg H<sub>2</sub>O)
+        </div>
+      </div>
+
+      <!-- Unit Rate 4: EUR per m³ dried timber -->
+      <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 14px 16px;">
+        <div style="font-size: 0.72rem; font-weight: 700; text-transform: uppercase; color: #64748b; margin-bottom: 4px;">
+          Cost Per m&sup3; Dried Timber
+        </div>
+        <div style="font-size: 1.45rem; font-weight: 700; color: #166534; line-height: 1.2;">
+          &euro;{{ "%.2f"|format(ledger_summary.cost_per_m3_timber_eur|default(6.75)) }} <span style="font-size: 0.82rem; font-weight: 500; color: #64748b;">/ m&sup3;</span>
+        </div>
+        <div style="font-size: 0.74rem; color: #64748b; margin-top: 6px;">
+          Scots pine (450 kg/m&sup3; dry, 157.5 kg H<sub>2</sub>O removed). Baseline: &euro;{{ "%.2f"|format(ledger_summary.baseline_cost_per_m3_timber_eur|default(6.75)) }} / m&sup3; &bull; Net Savings: &euro;{{ "%.2f"|format(ledger_summary.savings_per_m3_timber_eur|default(0.0)) }} / m&sup3;
+        </div>
+      </div>
+    </div>
+  </div>
 </div>
 
 <!-- 15-MINUTE SETTLEMENT TABLE -->
 <div class="card">
-  <div class="card-header">
-    <h3 class="card-title">
-      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="20" x2="18" y2="10"></line><line x1="12" y1="20" x2="12" y2="4"></line><line x1="6" y1="20" x2="6" y2="14"></line></svg>
-      15-Minute Settlement Interval Records ({{ total_intervals }} intervals)
-    </h3>
+  <div class="card-header" style="display: flex; justify-content: space-between; align-items: center;">
+    <div>
+      <h3 class="card-title">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="20" x2="18" y2="10"></line><line x1="12" y1="20" x2="12" y2="4"></line><line x1="6" y1="20" x2="6" y2="14"></line></svg>
+        15-Minute Settlement Interval Records ({{ total_intervals }} intervals)
+      </h3>
+      <div style="font-size: 0.76rem; color: #64748b; margin-top: 2px;">
+        Authoritative Lithuanian Day-Ahead market settlement records (Europe/Vilnius display, UTC storage).
+      </div>
+    </div>
     <span class="badge badge-slate">EUROPEAN POWER SETTLEMENT</span>
   </div>
 
@@ -123,14 +322,14 @@
           <th class="num-col">Effective (&euro;/kWh)</th>
           <th class="num-col">SOC Start &rarr; End</th>
           <th class="num-col">Sand Temp (&deg;C)</th>
-          <th class="num-col">TES Heat (kW)</th>
-          <th class="num-col">TES Chg (kW / kWh)</th>
-          <th class="num-col">Backup (kW)</th>
+          <th class="num-col">Process Heat (kW)</th>
+          <th class="num-col">TES Chg (kW / &euro;)</th>
+          <th class="num-col">Backup (kW / &euro;)</th>
           <th class="num-col">Baseline Cost (&euro;)</th>
           <th class="num-col">Actual Cost (&euro;)</th>
           <th class="num-col">&Delta;V<sub>inv</sub> (&euro;)</th>
-          <th class="num-col">Net Savings (&euro;)</th>
-          <th>Provenance</th>
+          <th class="num-col" style="color: #166534; font-weight: 700;">Net Savings (&euro;)</th>
+          <th>Process &bull; Provenance</th>
         </tr>
       </thead>
       <tbody>
@@ -168,9 +367,20 @@
             </td>
             <td class="num-col" style="color: #2563eb;">
               {{ "%.2f"|format(row.tes_charge_kw|default(0.0)) }} kW
-              <div style="font-size: 0.72rem; color: #64748b;">({{ "%.2f"|format(row.tes_charge_energy_kwh|default(0.0)) }} kWh)</div>
+              <div style="font-size: 0.72rem; color: #64748b;">
+                &euro;{{ "%.3f"|format(row.tes_charging_cost_eur|default(0.0)) }}
+              </div>
             </td>
-            <td class="num-col">{% if row.backup_heater_kw > 0 %}<strong style="color: #d97706;">{{ "%.2f"|format(row.backup_heater_kw) }}</strong>{% else %}0.00{% endif %}</td>
+            <td class="num-col">
+              {% if row.backup_heater_kw > 0 %}
+              <strong style="color: #d97706;">{{ "%.2f"|format(row.backup_heater_kw) }} kW</strong>
+              {% else %}
+              0.00
+              {% endif %}
+              <div style="font-size: 0.70rem; color: #64748b;">
+                &euro;{{ "%.3f"|format(row.dryer_operating_cost_eur|default(0.0)) }}
+              </div>
+            </td>
             <td class="num-col">&euro;{{ "%.3f"|format(row.baseline_direct_electric_cost_eur|default(0.0)) }}</td>
             <td class="num-col">&euro;{{ "%.3f"|format(row.actual_electricity_cost_eur|default(0.0)) }}</td>
             <td class="num-col" style="color: {% if row.inventory_value_delta_eur >= 0 %}#16a34a{% else %}#dc2626{% endif %};">
@@ -185,7 +395,7 @@
               </span>
               {% if row.moisture_content_percent is not none %}
               <div style="font-size: 0.70rem; color: #0284c7; margin-top: 2px;">
-                Wood: {{ "%.1f"|format(row.moisture_content_percent) }}%
+                Wood: {{ "%.1f"|format(row.moisture_content_percent) }}% ({{ "%.2f"|format(row.water_removed_kg|default(0.0)) }} kg)
               </div>
               {% endif %}
             </td>

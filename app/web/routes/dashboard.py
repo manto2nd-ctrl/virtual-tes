@@ -644,6 +644,7 @@ def page_history(
         "range": range,
         "tz_view": tz_view,
         "ledger_summary": ledger_data.get("summary", {}),
+        "period_comparison": ledger_data.get("period_comparison", {}),
         "ledger_intervals": ledger_data.get("intervals", []),
         "total_intervals": ledger_data.get("total_intervals", 0),
     })

@@ -815,6 +815,11 @@ class ShadowRuntimeService:
                 discharge_efficiency=self.tes_params.discharge_efficiency,
             )
             total_dryer_grid_kw = chg_act + dryer_step.backup_heater_power_kw + dryer_step.blower_power_kw + p_site + p_aux
+            moist_pct = (
+                round(dryer_step.current_moisture_percent, 1)
+                if dryer_step.current_moisture_percent is not None
+                else None
+            )
             self.ledger_service.record_interval(
                 db=db,
                 interval_start_utc=start_utc,
@@ -834,11 +839,24 @@ class ShadowRuntimeService:
                 avg_dryer_exhaust_temp_c=round(dryer_step.exhaust_air_temp_c, 1),
                 opening_soc_fraction=round(soc_start_fraction, 4),
                 closing_soc_fraction=round(soc_end_fraction, 4),
-                moisture_content_percent=round(dryer_step.current_moisture_percent, 1),
+                moisture_content_percent=moist_pct,
                 water_removed_kg=round(dryer_step.water_removed_total_kg, 2),
+                shadow_session_id=shadow_session.id,
+                stored_energy_start_kwh=round(soc_start_kwh, 4),
+                stored_energy_end_kwh=round(soc_end_kwh, 4),
+                standing_loss_kwh=round(standing_loss_kwh, 4),
+
+                dryer_heat_demand_kw=round(dryer_step.total_process_demand_kw, 2),
+                unmet_heat_kw=round(dryer_step.heat_shortfall_unmet_kw, 2),
+
+                optimization_price_basis=shadow_session.optimization_price_basis or "EFFECTIVE_VARIABLE_PRICE",
+                market_source=shadow_session.market_source or "LITGRID",
+                model_version=shadow_session.model_version or "gen0-shadow-v1",
+                commit=False,
             )
         except Exception as ledger_err:
-            log.warning("Ledger recording non-fatal: %s", ledger_err)
+            log.error("Ledger recording error in interval %s: %s", start_utc.isoformat(), ledger_err, exc_info=True)
+
 
         # Update session active state
         shadow_session.current_stored_energy_kwh = soc_end_kwh

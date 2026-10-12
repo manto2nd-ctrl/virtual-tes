@@ -210,16 +210,31 @@ class VirtualTESWorker:
             # Sleep between ticks
             time.sleep(self.tick_sleep_sec)
 
+        # Clean shutdown
+        logger.info("Shutting down worker %s...", self.lock.worker_id)
+        try:
+            with self.session_factory() as session:
+                self.publish_heartbeat(session, status="STOPPED")
+                self.lock.release(session)
+        except Exception as shutdown_err:
+            logger.warning("Error during final worker shutdown cleanup: %s", shutdown_err)
+        logger.info("Virtual TES worker stopped cleanly.")
+
     def run_daily_maintenance(self, session: Session) -> None:
-        """Run housekeeping to keep disk space minimal and prevent Railway volume bloat."""
+        """Run housekeeping to keep disk space minimal and prevent Railway volume bloat.
+        
+        Strict retention rule:
+        - Only transient operational telemetry (heartbeats older than 3 days, raw market JSON older than 3 days) is pruned.
+        - Valuable energy-audit history (energy_ledger_intervals, shadow_interval_records) and saved scenarios are strictly preserved permanently.
+        """
         now = time.time()
         if now - self.last_maintenance_time < 21600.0:  # Run every 6 hours
             return
         self.last_maintenance_time = now
         try:
-            logger.info("Running automated database maintenance & compaction...")
-            # 1. Prune heartbeats older than 2 days
-            cutoff_hb = utcnow() - timedelta(days=2)
+            logger.info("Running automated database maintenance & compaction (preserving audit history)...")
+            # 1. Prune heartbeats older than 3 days
+            cutoff_hb = utcnow() - timedelta(days=3)
             session.execute(delete(WorkerHeartbeat).where(WorkerHeartbeat.timestamp_utc < cutoff_hb))
 
             # 2. Prune raw market payloads older than 3 days (keeps disk usage < 100MB permanently)
@@ -244,6 +259,7 @@ class VirtualTESWorker:
                 with self.engine.connect().execution_options(isolation_level="AUTOCOMMIT") as conn:
                     conn.execute(text("VACUUM ANALYZE raw_market_data;"))
                     conn.execute(text("VACUUM ANALYZE worker_heartbeats;"))
+                    conn.execute(text("VACUUM ANALYZE energy_ledger_intervals;"))
             elif self.engine.dialect.name == "sqlite":
                 with self.engine.connect().execution_options(isolation_level="AUTOCOMMIT") as conn:
                     conn.execute(text("PRAGMA wal_checkpoint(TRUNCATE);"))
@@ -252,15 +268,6 @@ class VirtualTESWorker:
             session.rollback()
             logger.warning("Database maintenance encountered non-fatal error: %s", exc)
 
-        # Clean shutdown
-        logger.info("Shutting down worker %s...", self.lock.worker_id)
-        try:
-            with self.session_factory() as session:
-                self.publish_heartbeat(session, status="STOPPED")
-                self.lock.release(session)
-        except Exception as shutdown_err:
-            logger.warning("Error during final worker shutdown cleanup: %s", shutdown_err)
-        logger.info("Virtual TES worker stopped cleanly.")
 
 
 def main() -> None:

@@ -137,14 +137,35 @@
         {% if ledger_intervals and ledger_intervals|length > 0 %}
           {% for row in ledger_intervals %}
           <tr>
-            <td><strong>{{ row.interval_start_local }}</strong></td>
+            <td>
+              <strong>{{ row.interval_start_local }}</strong>
+              {% if row.run_id and row.run_id != '-' %}
+              <div style="font-size: 0.70rem; color: #64748b; font-family: monospace;" title="Session: {{ row.run_id }}">
+                Run: {{ row.run_id[:8] }}
+              </div>
+              {% endif %}
+            </td>
             <td class="num-col">{{ "%.2f"|format(row.spot_price_eur_mwh|default(0.0)) }}</td>
-            <td class="num-col">{{ "%.4f"|format(row.effective_price_eur_kwh|default(0.0)) }}</td>
+            <td class="num-col">
+              {{ "%.4f"|format(row.effective_price_eur_kwh|default(0.0)) }}
+              <div style="font-size: 0.68rem; color: #64748b;">{{ row.optimization_price_basis|default('EFFECTIVE') }}</div>
+            </td>
             <td class="num-col">
               {{ "%.1f"|format((row.soc_start_fraction|default(0.5)) * 100) }}% &rarr; {{ "%.1f"|format((row.soc_end_fraction|default(0.5)) * 100) }}%
+              <div style="font-size: 0.70rem; color: #64748b;">
+                {{ "%.2f"|format(row.stored_energy_start_kwh|default(7.5)) }} &rarr; {{ "%.2f"|format(row.stored_energy_end_kwh|default(7.5)) }} kWh
+              </div>
             </td>
             <td class="num-col">{{ "%.1f"|format(row.sand_temp_end_c|default(197.0)) }}</td>
-            <td class="num-col" style="color: #ea580c; font-weight: 600;">{{ "%.2f"|format(row.heat_delivered_kw|default(0.0)) }}</td>
+            <td class="num-col" style="color: #ea580c; font-weight: 600;">
+              {{ "%.2f"|format(row.heat_delivered_kw|default(0.0)) }} kW
+              <div style="font-size: 0.70rem; color: #64748b;">
+                Demand: {{ "%.2f"|format(row.dryer_heat_demand_kw|default(1.5)) }} kW
+                {% if row.unmet_heat_kw and row.unmet_heat_kw > 0.01 %}
+                <span style="color: #dc2626;">(Unmet: {{ "%.2f"|format(row.unmet_heat_kw) }} kW)</span>
+                {% endif %}
+              </div>
+            </td>
             <td class="num-col" style="color: #2563eb;">
               {{ "%.2f"|format(row.tes_charge_kw|default(0.0)) }} kW
               <div style="font-size: 0.72rem; color: #64748b;">({{ "%.2f"|format(row.tes_charge_energy_kwh|default(0.0)) }} kWh)</div>
@@ -162,6 +183,11 @@
               <span class="badge {% if row.provenance == 'MEASURED' %}badge-green{% elif row.provenance == 'SHADOW_PREDICTED' %}badge-blue{% else %}badge-slate{% endif %}" style="font-size: 0.68rem;">
                 {{ row.provenance }}
               </span>
+              {% if row.moisture_content_percent is not none %}
+              <div style="font-size: 0.70rem; color: #0284c7; margin-top: 2px;">
+                Wood: {{ "%.1f"|format(row.moisture_content_percent) }}%
+              </div>
+              {% endif %}
             </td>
           </tr>
           {% endfor %}

@@ -450,17 +450,24 @@ class EnergyLedgerInterval(Base):
     __tablename__ = "energy_ledger_intervals"
     __table_args__ = (
         UniqueConstraint("site_id", "interval_start_utc", name="uq_ledger_interval"),
+        Index("ix_ledger_start_utc", "interval_start_utc"),
+        Index("ix_ledger_site_start", "site_id", "interval_start_utc"),
+        Index("ix_ledger_session_id", "shadow_session_id"),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     site_id: Mapped[str] = mapped_column(String(64), default="gen0-vilnius-demo", index=True)
+    shadow_session_id: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)  # Run ID / Session ID
     interval_start_utc: Mapped[datetime] = mapped_column(UTCDateTime, index=True)
     interval_end_utc: Mapped[datetime] = mapped_column(UTCDateTime)
     duration_minutes: Mapped[int] = mapped_column(Integer, default=15)
 
-    # Market Prices (€/MWh)
+    # Market Prices & Basis (€/MWh)
     spot_price_eur_mwh: Mapped[float] = mapped_column(Float)
     effective_price_eur_mwh: Mapped[float] = mapped_column(Float)
+    optimization_price_basis: Mapped[str] = mapped_column(String(32), default="EFFECTIVE_VARIABLE_PRICE")
+    market_source: Mapped[str] = mapped_column(String(32), default="LITGRID")
+    model_version: Mapped[str] = mapped_column(String(32), default="gen0-shadow-v1")
 
     # Energy Quantities (kWh per 15-min interval)
     tes_charge_energy_kwh: Mapped[float] = mapped_column(Float, default=0.0)
@@ -469,11 +476,14 @@ class EnergyLedgerInterval(Base):
     blower_electric_kwh: Mapped[float] = mapped_column(Float, default=0.0)
     auxiliary_electric_kwh: Mapped[float] = mapped_column(Float, default=0.0)
     total_grid_import_kwh: Mapped[float] = mapped_column(Float, default=0.0)
+    standing_loss_kwh: Mapped[float] = mapped_column(Float, default=0.0)
 
-    # Power Peaks (kW)
+    # Power Peaks & Demands (kW)
     peak_grid_power_kw: Mapped[float] = mapped_column(Float, default=0.0)
     avg_tes_heat_kw: Mapped[float] = mapped_column(Float, default=0.0)
     avg_dryer_demand_kw: Mapped[float] = mapped_column(Float, default=1.50)
+    dryer_heat_demand_kw: Mapped[float] = mapped_column(Float, default=1.50)
+    unmet_heat_kw: Mapped[float] = mapped_column(Float, default=0.0)
 
     # Temperatures & Physical State
     avg_sand_temp_c: Mapped[float] = mapped_column(Float)
@@ -481,6 +491,8 @@ class EnergyLedgerInterval(Base):
     avg_dryer_exhaust_temp_c: Mapped[float] = mapped_column(Float)
     opening_soc_fraction: Mapped[float] = mapped_column(Float)
     closing_soc_fraction: Mapped[float] = mapped_column(Float)
+    stored_energy_start_kwh: Mapped[float | None] = mapped_column(Float, nullable=True)
+    stored_energy_end_kwh: Mapped[float | None] = mapped_column(Float, nullable=True)
 
     # Financial Ledger (€ per interval)
     baseline_cost_eur: Mapped[float] = mapped_column(Float)      # Heat delivered * effective_price
@@ -488,13 +500,15 @@ class EnergyLedgerInterval(Base):
     inventory_delta_eur: Mapped[float] = mapped_column(Float)    # (SOC_end - SOC_start) * capacity * effective_price
     net_savings_eur: Mapped[float] = mapped_column(Float)        # Baseline - Actual + InventoryDelta
 
-    # Timber Batch Progress (Estimated)
-    moisture_content_percent: Mapped[float] = mapped_column(Float, default=50.0)
+    # Timber Batch Progress (Estimated / 0.0 for test rig)
+    moisture_content_percent: Mapped[float] = mapped_column(Float, default=0.0)
     water_removed_kg: Mapped[float] = mapped_column(Float, default=0.0)
+
 
     # Provenance & Audit
     data_provenance: Mapped[str] = mapped_column(String(32), default="SIMULATED")
     operating_mode: Mapped[str] = mapped_column(String(32), default="VIRTUAL")
     created_at_utc: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow)
+
 
 

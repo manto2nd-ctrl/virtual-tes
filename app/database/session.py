@@ -121,6 +121,49 @@ def _migrate_columns_sqlite(engine: Engine) -> None:
         if sir_cols and "optimization_price_eur_mwh" not in sir_cols:
             conn.execute(text("ALTER TABLE shadow_interval_records ADD COLUMN optimization_price_eur_mwh FLOAT"))
 
+        # Phase 5.11 Stage 5: EnergyLedgerInterval expansion
+        res = conn.execute(text("PRAGMA table_info(energy_ledger_intervals)")).fetchall()
+        eli_cols = {row[1] for row in res}
+        if eli_cols:
+            if "shadow_session_id" not in eli_cols:
+                conn.execute(text("ALTER TABLE energy_ledger_intervals ADD COLUMN shadow_session_id VARCHAR(64)"))
+            if "optimization_price_basis" not in eli_cols:
+                conn.execute(text("ALTER TABLE energy_ledger_intervals ADD COLUMN optimization_price_basis VARCHAR(32) DEFAULT 'EFFECTIVE_VARIABLE_PRICE'"))
+            if "market_source" not in eli_cols:
+                conn.execute(text("ALTER TABLE energy_ledger_intervals ADD COLUMN market_source VARCHAR(32) DEFAULT 'LITGRID'"))
+            if "model_version" not in eli_cols:
+                conn.execute(text("ALTER TABLE energy_ledger_intervals ADD COLUMN model_version VARCHAR(32) DEFAULT 'gen0-shadow-v1'"))
+            if "standing_loss_kwh" not in eli_cols:
+                conn.execute(text("ALTER TABLE energy_ledger_intervals ADD COLUMN standing_loss_kwh FLOAT DEFAULT 0.0"))
+            if "dryer_heat_demand_kw" not in eli_cols:
+                conn.execute(text("ALTER TABLE energy_ledger_intervals ADD COLUMN dryer_heat_demand_kw FLOAT DEFAULT 1.50"))
+            if "unmet_heat_kw" not in eli_cols:
+                conn.execute(text("ALTER TABLE energy_ledger_intervals ADD COLUMN unmet_heat_kw FLOAT DEFAULT 0.0"))
+            if "stored_energy_start_kwh" not in eli_cols:
+                conn.execute(text("ALTER TABLE energy_ledger_intervals ADD COLUMN stored_energy_start_kwh FLOAT"))
+            if "stored_energy_end_kwh" not in eli_cols:
+                conn.execute(text("ALTER TABLE energy_ledger_intervals ADD COLUMN stored_energy_end_kwh FLOAT"))
+            conn.execute(text("CREATE INDEX IF NOT EXISTS ix_ledger_start_utc ON energy_ledger_intervals (interval_start_utc)"))
+            conn.execute(text("CREATE INDEX IF NOT EXISTS ix_ledger_site_start ON energy_ledger_intervals (site_id, interval_start_utc)"))
+            conn.execute(text("CREATE INDEX IF NOT EXISTS ix_ledger_session_id ON energy_ledger_intervals (shadow_session_id)"))
+
+
+def _migrate_columns_postgres(engine: Engine) -> None:
+    """Safe backward-compatible column addition for PostgreSQL deployments."""
+    with engine.begin() as conn:
+        conn.execute(text("ALTER TABLE energy_ledger_intervals ADD COLUMN IF NOT EXISTS shadow_session_id VARCHAR(64)"))
+        conn.execute(text("ALTER TABLE energy_ledger_intervals ADD COLUMN IF NOT EXISTS optimization_price_basis VARCHAR(32) DEFAULT 'EFFECTIVE_VARIABLE_PRICE'"))
+        conn.execute(text("ALTER TABLE energy_ledger_intervals ADD COLUMN IF NOT EXISTS market_source VARCHAR(32) DEFAULT 'LITGRID'"))
+        conn.execute(text("ALTER TABLE energy_ledger_intervals ADD COLUMN IF NOT EXISTS model_version VARCHAR(32) DEFAULT 'gen0-shadow-v1'"))
+        conn.execute(text("ALTER TABLE energy_ledger_intervals ADD COLUMN IF NOT EXISTS standing_loss_kwh FLOAT DEFAULT 0.0"))
+        conn.execute(text("ALTER TABLE energy_ledger_intervals ADD COLUMN IF NOT EXISTS dryer_heat_demand_kw FLOAT DEFAULT 1.50"))
+        conn.execute(text("ALTER TABLE energy_ledger_intervals ADD COLUMN IF NOT EXISTS unmet_heat_kw FLOAT DEFAULT 0.0"))
+        conn.execute(text("ALTER TABLE energy_ledger_intervals ADD COLUMN IF NOT EXISTS stored_energy_start_kwh FLOAT"))
+        conn.execute(text("ALTER TABLE energy_ledger_intervals ADD COLUMN IF NOT EXISTS stored_energy_end_kwh FLOAT"))
+        conn.execute(text("CREATE INDEX IF NOT EXISTS ix_ledger_start_utc ON energy_ledger_intervals (interval_start_utc)"))
+        conn.execute(text("CREATE INDEX IF NOT EXISTS ix_ledger_site_start ON energy_ledger_intervals (site_id, interval_start_utc)"))
+        conn.execute(text("CREATE INDEX IF NOT EXISTS ix_ledger_session_id ON energy_ledger_intervals (shadow_session_id)"))
+
 
 def init_db(engine: Engine) -> None:
     """Create all tables (idempotent) and install append-only triggers."""
@@ -128,7 +171,10 @@ def init_db(engine: Engine) -> None:
     if engine.dialect.name == "sqlite":
         _migrate_columns_sqlite(engine)
         install_immutability_triggers(engine)
+    elif engine.dialect.name == "postgresql":
+        _migrate_columns_postgres(engine)
 
 
 def make_session_factory(engine: Engine) -> sessionmaker[Session]:
     return sessionmaker(bind=engine, expire_on_commit=False, future=True)
+

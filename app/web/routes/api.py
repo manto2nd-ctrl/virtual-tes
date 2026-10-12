@@ -1267,16 +1267,20 @@ def get_ledger_history(
 @api_router.get("/ledger/export")
 def export_ledger_csv(
     period: str = "today",
+    range: str | None = None,
+    tz_str: str | None = None,
     db: Session = Depends(get_db),
 ):
     """Download audit-grade CSV file of 15-minute settlement intervals."""
-    csv_text = _shadow_service.ledger_service.export_csv(db=db, period=period)
-    filename = f"gen0_settlement_ledger_{period}_{datetime.now(timezone.utc).strftime('%Y%m%d')}.csv"
+    selected_period = range or period
+    csv_text = _shadow_service.ledger_service.export_csv(db=db, period=selected_period)
+    filename = f"gen0_settlement_ledger_{selected_period}_{datetime.now(timezone.utc).strftime('%Y%m%d')}.csv"
     return Response(
         content=csv_text,
         media_type="text/csv",
         headers={"Content-Disposition": f"attachment; filename={filename}"},
     )
+
 
 
 # --------------------------------------------------------------------------- Admin Maintenance

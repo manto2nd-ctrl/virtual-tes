@@ -20,23 +20,72 @@ def seed_demo_intervals():
         runtime = ShadowRuntimeService(tz=VILNIUS_TZ)
         sess = runtime.get_or_create_session(db)
         sess.status = "RUNNING"
+        sess.process_enabled = True
+        sess.process_heat_demand_kw = 1.5
         db.commit()
 
-        # Execute 4 intervals so that history has comprehensive audit records
-        t_now = datetime.now(timezone.utc)
-        for i in range(4, 0, -1):
-            t_start = t_now - timedelta(minutes=15 * i)
-            t_end = t_start + timedelta(minutes=15)
-            runtime.execute_interval_step(
-                db=db,
-                shadow_session=sess,
-                interval_start_utc=t_start,
-                interval_end_utc=t_end,
-                spot_price_eur_mwh=75.0 + (i * 3.5),
-                reason_code="DEMO_SETTLEMENT",
-            )
+        # Seed intervals within today's local Vilnius day
+        now_local = datetime.now(VILNIUS_TZ)
+        t_base = now_local.replace(hour=0, minute=0, second=0, microsecond=0)
+
+        # Interval 1: 00:00-00:15 - Off-peak TES charging (8 kW charge)
+        t1_start = t_base.astimezone(timezone.utc)
+        t1_end = (t_base + timedelta(minutes=15)).astimezone(timezone.utc)
+        runtime.execute_interval_step(
+            db=db,
+            shadow_session=sess,
+            interval_start_utc=t1_start,
+            interval_end_utc=t1_end,
+            spot_price_eur_mwh=42.50,
+            requested_charge_kw=8.0,
+            requested_discharge_kw=0.0,
+            reason_code="OFF_PEAK_CHARGE",
+        )
+
+        # Interval 2: 00:15-00:30 - Process heat delivery from TES
+        t2_start = (t_base + timedelta(minutes=15)).astimezone(timezone.utc)
+        t2_end = (t_base + timedelta(minutes=30)).astimezone(timezone.utc)
+        runtime.execute_interval_step(
+            db=db,
+            shadow_session=sess,
+            interval_start_utc=t2_start,
+            interval_end_utc=t2_end,
+            spot_price_eur_mwh=88.00,
+            requested_charge_kw=0.0,
+            requested_discharge_kw=1.5,
+            reason_code="PROCESS_HEAT_DELIVERY",
+        )
+
+        # Interval 3: 00:30-00:45 - Process heat delivery from TES
+        t3_start = (t_base + timedelta(minutes=30)).astimezone(timezone.utc)
+        t3_end = (t_base + timedelta(minutes=45)).astimezone(timezone.utc)
+        runtime.execute_interval_step(
+            db=db,
+            shadow_session=sess,
+            interval_start_utc=t3_start,
+            interval_end_utc=t3_end,
+            spot_price_eur_mwh=105.00,
+            requested_charge_kw=0.0,
+            requested_discharge_kw=1.5,
+            reason_code="PROCESS_HEAT_DELIVERY",
+        )
+
+        # Interval 4: 00:45-01:00 - Process heat delivery
+        t4_start = (t_base + timedelta(minutes=45)).astimezone(timezone.utc)
+        t4_end = (t_base + timedelta(minutes=60)).astimezone(timezone.utc)
+        runtime.execute_interval_step(
+            db=db,
+            shadow_session=sess,
+            interval_start_utc=t4_start,
+            interval_end_utc=t4_end,
+            spot_price_eur_mwh=120.00,
+            requested_charge_kw=0.0,
+            requested_discharge_kw=1.5,
+            reason_code="PROCESS_HEAT_DELIVERY",
+        )
+
         db.commit()
-        print("Seeded demo intervals for Stage 6 screenshots.")
+        print("Seeded demo intervals for Stage 6 screenshots across today.")
 
 def main():
     seed_demo_intervals()

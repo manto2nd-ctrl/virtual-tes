@@ -1047,7 +1047,7 @@ def shadow_history(db: Session = Depends(get_db)):
 def get_dryer_status(db: Session = Depends(get_db)):
     """Return live dryer step results and timber kinetics."""
     sess = _shadow_service.get_or_create_session(db)
-    res = _shadow_service.dryer_model.step(sess.current_sand_temperature_c)
+    res = _shadow_service.dryer_model.step(sess.current_sand_temperature_c, mutate_batch=False)
     return {
         "status": res.status,
         "simulation_mode": res.simulation_mode.value,

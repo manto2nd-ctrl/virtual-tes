@@ -129,12 +129,73 @@ def get_runtime_status_context(db: Session) -> dict[str, Any]:
     db_display = "CONNECTED"
     env_display = settings.app_env.upper()
 
+    # Check market freshness
+    from app.services.market_data_service import MarketDataService
+    from app.services.shadow_runtime import get_market_interval_bounds
+    m_svc = MarketDataService()
+    market_stale = False
+    try:
+        fetch_res = m_svc.fetch_market_data(session=db)
+        market_stale = fetch_res.is_stale
+    except Exception:
+        market_stale = True
+
     shadow_status = "STOPPED"
     if active_sess:
         if not worker_online and active_sess.status == "RUNNING":
             shadow_status = "OFFLINE / STALE"
         else:
             shadow_status = active_sess.status
+
+    # Canonical 6 runtime states:
+    # EXECUTING | WAITING FOR NEXT INTERVAL | STALE DATA | PAUSED | ERROR | OFFLINE
+    if active_sess and active_sess.status == "ERROR":
+        runtime_state = "ERROR"
+        runtime_state_color = "#dc2626"
+        runtime_state_desc = f"Execution error: {active_sess.error_message or 'Session error'}"
+    elif hb and hb.status == "ERROR":
+        runtime_state = "ERROR"
+        runtime_state_color = "#dc2626"
+        runtime_state_desc = "Worker process reported critical error"
+    elif active_sess and active_sess.status == "PAUSED":
+        runtime_state = "PAUSED"
+        runtime_state_color = "#eab308"
+        runtime_state_desc = "Simulation paused by operator — physical and financial states preserved"
+    elif not worker_online and not (active_sess and active_sess.status == "RUNNING"):
+        runtime_state = "OFFLINE"
+        runtime_state_color = "#64748b"
+        runtime_state_desc = "Worker process offline or stopped — no active background execution"
+    elif market_stale:
+        runtime_state = "STALE DATA"
+        runtime_state_color = "#d97706"
+        runtime_state_desc = "Market price feed delayed > 30 minutes; using fallback price buffer"
+    elif active_sess and active_sess.status == "RUNNING":
+        curr_start_utc, curr_end_utc = get_market_interval_bounds(now)
+        time_to_end = (curr_end_utc - now).total_seconds()
+        time_since_start = (now - curr_start_utc).total_seconds()
+        is_executing = (
+            time_since_start < 30
+            or time_to_end < 30
+            or (hb and hb.details_json and hb.details_json.get("is_executing"))
+        )
+        if is_executing:
+            runtime_state = "EXECUTING"
+            runtime_state_color = "#2563eb"
+            runtime_state_desc = "Simulating continuous 15-minute settlement interval dispatch"
+        else:
+            runtime_state = "WAITING FOR NEXT INTERVAL"
+            runtime_state_color = "#16a34a"
+            runtime_state_desc = f"Schedule active; waiting for interval boundary at {curr_end_utc.strftime('%H:%M')} UTC"
+    elif not worker_online:
+        runtime_state = "OFFLINE"
+        runtime_state_color = "#64748b"
+        runtime_state_desc = "Worker heartbeat timed out (> 180s)"
+    else:
+        runtime_state = "WAITING FOR NEXT INTERVAL"
+        runtime_state_color = "#16a34a"
+        runtime_state_desc = "System ready; waiting for session start"
+
+    db_size_mb = hb.details_json.get("db_size_mb") if hb and hb.details_json else None
 
     return {
         "env": env_display,
@@ -143,6 +204,10 @@ def get_runtime_status_context(db: Session) -> dict[str, Any]:
         "worker_online": worker_online,
         "db_status": db_display,
         "shadow_status": shadow_status,
+        "runtime_state": runtime_state,
+        "runtime_state_color": runtime_state_color,
+        "runtime_state_desc": runtime_state_desc,
+        "db_size_mb": db_size_mb,
         "heartbeat_age_sec": heartbeat_age_sec,
         "last_heartbeat_utc": hb.timestamp_utc if hb else None,
         "last_market_fetch_utc": hb.last_market_fetch_utc if hb else None,

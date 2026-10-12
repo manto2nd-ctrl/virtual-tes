@@ -489,6 +489,15 @@ class ShadowRepository:
             stmt = stmt.limit(limit)
         return list(self.s.execute(stmt).scalars())
 
+    def get_latest_interval_record(self, shadow_session_id: str) -> ShadowIntervalRecord | None:
+        """Return the most recently executed interval record for a session."""
+        return self.s.execute(
+            select(ShadowIntervalRecord)
+            .where(ShadowIntervalRecord.shadow_session_id == shadow_session_id)
+            .order_by(ShadowIntervalRecord.interval_start_utc.desc())
+            .limit(1)
+        ).scalar_one_or_none()
+
     def record_audit(self, audit: ShadowEventAudit) -> ShadowEventAudit:
         self.s.add(audit)
         self.s.flush()

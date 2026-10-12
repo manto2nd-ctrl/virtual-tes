@@ -236,15 +236,15 @@ def test_multi_period_comparison(test_db_session: Session):
     db = test_db_session
     svc = EnergyLedgerService(tz=VILNIUS_TZ, full_capacity_kwh=15.0)
 
-    now = datetime.now(timezone.utc)
-    # Interval 1: Today
-    t_today = now.replace(hour=10, minute=0, second=0, microsecond=0)
+    now_local = datetime.now(VILNIUS_TZ)
+    # Interval 1: Local Today
+    t_today = now_local.replace(minute=0, second=0, microsecond=0).astimezone(timezone.utc)
     # Interval 2: 3 days ago (in 7d, 30d, all)
-    t_3d = now - timedelta(days=3)
+    t_3d = t_today - timedelta(days=3)
     # Interval 3: 15 days ago (in 30d, all)
-    t_15d = now - timedelta(days=15)
+    t_15d = t_today - timedelta(days=15)
     # Interval 4: 45 days ago (in all only)
-    t_45d = now - timedelta(days=45)
+    t_45d = t_today - timedelta(days=45)
 
     for i, t in enumerate([t_today, t_3d, t_15d, t_45d]):
         svc.record_interval(

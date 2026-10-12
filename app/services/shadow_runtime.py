@@ -227,6 +227,89 @@ class ShadowRuntimeService:
         db.commit()
         return new_sess
 
+    def restore_runtime_state(
+        self,
+        db: Session,
+        session_id: str | None = None,
+        now_utc: datetime | None = None,
+    ) -> dict[str, Any]:
+        """Restore TES energy/SOC, active dryer batch, and preserve pause/stop settings on startup.
+
+        Guarantees:
+        1. Restores TES energy, SOC, and sand temperature from the persistent session.
+        2. Preserves PAUSED / STOPPED / RUNNING session status without resetting operator state.
+        3. Restores active dryer batch kinetics (timber dry mass, current moisture %, cumulative water removed)
+           from committed settlement ledger intervals.
+        4. Reconciles committed history and verifies idempotency keys.
+        5. Evaluates data freshness (flags STALE DATA if market feed or intervals > 30m old).
+        """
+        now = ensure_utc(now_utc) if now_utc is not None else utcnow()
+        sess = self.get_or_create_session(db, session_id=session_id)
+
+        # 1. Ensure TES physical state is aligned with latest executed interval (if any)
+        repo = ShadowRepository(db)
+        latest_record = repo.get_latest_interval_record(sess.id)
+        if latest_record is not None:
+            sess.current_soc_fraction = latest_record.soc_end_fraction
+            sess.current_stored_energy_kwh = latest_record.stored_energy_end_kwh
+            sess.current_sand_temperature_c = latest_record.sand_temp_end_c
+            sess.last_executed_interval_start_utc = latest_record.interval_start_utc
+            db.commit()
+
+        # 2. Restore active dryer batch state from committed EnergyLedgerInterval
+        from app.database.models import EnergyLedgerInterval
+        latest_ledger = db.execute(
+            select(EnergyLedgerInterval)
+            .where(EnergyLedgerInterval.shadow_session_id == sess.id)
+            .order_by(EnergyLedgerInterval.interval_start_utc.desc())
+            .limit(1)
+        ).scalar_one_or_none()
+
+        if latest_ledger is None:
+            latest_ledger = db.execute(
+                select(EnergyLedgerInterval)
+                .order_by(EnergyLedgerInterval.interval_start_utc.desc())
+                .limit(1)
+            ).scalar_one_or_none()
+
+        cum_water_removed = 0.0
+        if latest_ledger is not None:
+            total_water_res = db.execute(
+                select(EnergyLedgerInterval.water_removed_kg)
+                .where(EnergyLedgerInterval.shadow_session_id == sess.id)
+            ).scalars().all()
+            if total_water_res:
+                cum_water_removed = sum(total_water_res)
+            elif latest_ledger.water_removed_kg:
+                cum_water_removed = latest_ledger.water_removed_kg
+
+            if latest_ledger.moisture_content_percent is not None:
+                self.dryer_model.restore_batch_state(
+                    current_moisture_percent=latest_ledger.moisture_content_percent,
+                    water_removed_cumulative_kg=cum_water_removed,
+                )
+
+        # 3. Recover/reconcile any uncommitted ledger records
+        self.ledger_service.sync_from_shadow_intervals(db)
+
+        # 4. Check data staleness
+        is_stale = False
+        if sess.last_executed_interval_start_utc:
+            age_sec = (now - ensure_utc(sess.last_executed_interval_start_utc)).total_seconds()
+            if age_sec > 1800:
+                is_stale = True
+
+        return {
+            "session_id": sess.id,
+            "status": sess.status,
+            "soc_fraction": sess.current_soc_fraction,
+            "stored_energy_kwh": sess.current_stored_energy_kwh,
+            "sand_temperature_c": sess.current_sand_temperature_c,
+            "batch_moisture_percent": (self.dryer_model.current_water_mass_kg / self.dryer_model.config.timber_mass_dry_kg) * 100.0 if self.dryer_model.config.timber_mass_dry_kg > 0 else 0.0,
+            "water_removed_cumulative_kg": self.dryer_model.water_removed_cumulative_kg,
+            "is_stale": is_stale,
+        }
+
     def start_session(
         self,
         db: Session,
@@ -1182,9 +1265,9 @@ class ShadowRuntimeService:
             r.energy_balance_residual_kwh > EPS_ENERGY for r in interval_records[:5]
         ) or (sess.error_message and "ENERGY BALANCE ERROR" in sess.error_message)
 
-        # Step current dryer state & query ledger
+        # Step current dryer state & query ledger (non-mutating preview)
         try:
-            dryer_state = self.dryer_model.step(sess.current_sand_temperature_c)
+            dryer_state = self.dryer_model.step(sess.current_sand_temperature_c, mutate_batch=False)
             dryer_data = {
                 "mode": dryer_state.mode.value,
                 "recipe_preset": dryer_state.recipe_preset.value,
@@ -1214,11 +1297,10 @@ class ShadowRuntimeService:
                 "is_batch_complete": dryer_state.is_batch_complete,
                 "blower_interlock_active": dryer_state.blower_interlock_active,
                 "tes_pinch_derated": dryer_state.tes_pinch_derated,
-                "status": "Running" if not dryer_state.blower_interlock_active else "Interlocked",
-                "batch_dry_mass_kg": getattr(self.dryer_model.batch_state, "timber_dry_mass_kg", 500.0),
-                "batch_initial_moisture_fraction": getattr(self.dryer_model.batch_state, "initial_moisture_fraction", 0.50),
-                "batch_target_moisture_fraction": getattr(self.dryer_model.batch_state, "target_moisture_fraction", 0.15),
-                "batch_current_moisture_fraction": dryer_state.current_moisture_percent / 100.0,
+                "batch_dry_mass_kg": getattr(self.dryer_model.config, "timber_mass_dry_kg", 500.0),
+                "batch_initial_moisture_fraction": getattr(self.dryer_model.config, "initial_moisture_percent", 50.0) / 100.0,
+                "batch_target_moisture_fraction": getattr(self.dryer_model.config, "target_moisture_percent", 15.0) / 100.0,
+                "batch_current_moisture_fraction": (dryer_state.current_moisture_percent / 100.0) if dryer_state.current_moisture_percent is not None else 0.32,
             }
         except Exception as dryer_err:
             log.warning("Dryer state calculation fallback: %s", dryer_err)

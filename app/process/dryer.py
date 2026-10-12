@@ -366,6 +366,7 @@ class VirtualDryerModel:
         tes_heat_delivered_kw: float | None = None,
         available_stored_energy_kwh: float | None = None,
         discharge_efficiency: float = 0.90,
+        mutate_batch: bool = True,
     ) -> DryerStepResult:
         """Execute a physically consistent simulation step of the dryer given current TES sand temperature.
 
@@ -575,23 +576,35 @@ class VirtualDryerModel:
             water_removed_step_kg = min(water_rem_budget_kg, water_rem_kinetic_kg, remaining_water_in_wood)
             evap_delivered_kw = (water_removed_step_kg * h_evap_curr) / dt_hours if dt_hours > 0 else 0.0
 
-            # Update batch state
-            self.water_removed_cumulative_kg += water_removed_step_kg
-            self.current_water_mass_kg = max(
-                self.target_water_mass_kg,
-                self.current_water_mass_kg - water_removed_step_kg,
-            )
+            # Update batch state (or compute preview values)
+            if mutate_batch:
+                self.water_removed_cumulative_kg += water_removed_step_kg
+                self.current_water_mass_kg = max(
+                    self.target_water_mass_kg,
+                    self.current_water_mass_kg - water_removed_step_kg,
+                )
+                effective_water_mass = self.current_water_mass_kg
+                effective_cum_water = self.water_removed_cumulative_kg
+                self.cumulative_thermal_kwh += total_delivered_kw * dt_hours
+                effective_cum_thermal = self.cumulative_thermal_kwh
+            else:
+                effective_water_mass = max(
+                    self.target_water_mass_kg,
+                    self.current_water_mass_kg - water_removed_step_kg,
+                )
+                effective_cum_water = self.water_removed_cumulative_kg + water_removed_step_kg
+                effective_cum_thermal = self.cumulative_thermal_kwh + (total_delivered_kw * dt_hours)
 
-            current_mc = (self.current_water_mass_kg / cfg.timber_mass_dry_kg) * 100.0 if cfg.timber_mass_dry_kg > 0 else 0.0
+            current_mc = (effective_water_mass / cfg.timber_mass_dry_kg) * 100.0 if cfg.timber_mass_dry_kg > 0 else 0.0
             batch_complete = current_mc <= (cfg.target_moisture_percent + 0.05)
 
             if self.total_water_to_remove_kg > 0:
-                progress_pct = min(100.0, (self.water_removed_cumulative_kg / self.total_water_to_remove_kg) * 100.0)
+                progress_pct = min(100.0, (effective_cum_water / self.total_water_to_remove_kg) * 100.0)
             else:
                 progress_pct = 100.0
 
             # Remaining hours estimate based on actual evaporation rate
-            water_left_to_remove = max(0.0, self.current_water_mass_kg - self.target_water_mass_kg)
+            water_left_to_remove = max(0.0, effective_water_mass - self.target_water_mass_kg)
             evap_hourly_rate = (water_removed_step_kg / dt_hours) if dt_hours > 0 else 0.0
             if batch_complete:
                 est_remaining_h = 0.0
@@ -610,9 +623,8 @@ class VirtualDryerModel:
             t_timber = round(0.5 * (t_supply_achieved + t_exhaust), 1)
 
             # Specific Energy Consumption (kWh_th / kg water removed)
-            self.cumulative_thermal_kwh += total_delivered_kw * dt_hours
-            if self.water_removed_cumulative_kg > 0.05:
-                sec_thermal = round(self.cumulative_thermal_kwh / self.water_removed_cumulative_kg, 2)
+            if effective_cum_water > 0.05:
+                sec_thermal = round(effective_cum_thermal / effective_cum_water, 2)
             else:
                 sec_thermal = round(cfg.latent_heat_evaporation_kwh_kg, 2)
 
@@ -649,7 +661,7 @@ class VirtualDryerModel:
             wood_species=cfg.wood_species,
             current_moisture_percent=round(current_mc, 1) if current_mc is not None else None,
             water_removed_step_kg=round(water_removed_step_kg, 4),
-            water_removed_total_kg=round(self.water_removed_cumulative_kg, 2),
+            water_removed_total_kg=round(effective_cum_water if cfg.simulation_mode != DryerSimulationMode.THERMAL_TEST_RIG else 0.0, 2),
             batch_progress_percent=round(progress_pct, 1) if progress_pct is not None else None,
             estimated_remaining_hours=est_remaining_h if est_remaining_h is not None else None,
             is_batch_complete=batch_complete,
@@ -661,8 +673,27 @@ class VirtualDryerModel:
             alarms=alarms,
             provenance=DataProvenance.SIMULATED,
         )
-        self._latest_result = res
+        if mutate_batch:
+            self._latest_result = res
         return res
+
+    def restore_batch_state(
+        self,
+        current_moisture_percent: float | None = None,
+        water_removed_cumulative_kg: float | None = None,
+    ) -> None:
+        """Restore active timber batch state from committed database records after restart."""
+        m_dry = self.config.timber_mass_dry_kg
+        if current_moisture_percent is not None:
+            self.current_water_mass_kg = max(
+                self.target_water_mass_kg,
+                m_dry * (current_moisture_percent / 100.0),
+            )
+        if water_removed_cumulative_kg is not None:
+            self.water_removed_cumulative_kg = max(0.0, float(water_removed_cumulative_kg))
+        else:
+            init_water = m_dry * (self.config.initial_moisture_percent / 100.0)
+            self.water_removed_cumulative_kg = max(0.0, init_water - self.current_water_mass_kg)
 
     def get_status(self) -> dict[str, Any]:
         """Return serializable status dictionary of latest or default dryer step."""

@@ -108,6 +108,7 @@ class VirtualTESWorker:
                     "is_leader": self.lock.is_leader,
                     "model_version": self.shadow_service.tes_params.capacity_semantics_version,
                     "bidding_zone": self.settings.bidding_zone,
+                    "db_size_mb": getattr(self, "last_db_size_mb", 0.0),
                 },
             )
             session.add(hb)
@@ -122,16 +123,33 @@ class VirtualTESWorker:
             logger.error("Failed to write worker heartbeat: %s", exc)
 
     def startup_catch_up(self, session: Session) -> None:
-        """Recover and replay any missed intervals during downtime."""
+        """Recover, restore state, and replay any missed intervals during downtime."""
         try:
+            # 1. Restore TES energy/SOC, active dryer batch kinetics, and preserve pause/stop settings
+            restored = self.shadow_service.restore_runtime_state(session)
+            logger.info(
+                "Restored runtime state on startup: session=%s, status=%s, SOC=%.1f%%, batch_mc=%.1f%%",
+                restored["session_id"],
+                restored["status"],
+                restored["soc_fraction"] * 100.0,
+                restored["batch_moisture_percent"],
+            )
+
+            # 2. Only replay intervals if session status is RUNNING
             active = session.execute(
-                select(ShadowTESSession).where(ShadowTESSession.status == "RUNNING").limit(1)
+                select(ShadowTESSession).where(ShadowTESSession.id == restored["session_id"]).limit(1)
             ).scalar_one_or_none()
-            if active:
+
+            if active and active.status == "RUNNING":
                 logger.info("Found active RUNNING shadow session %s. Replaying missed intervals...", active.id)
                 caught_up = self.shadow_service.catch_up_missed_intervals(session, active)
                 logger.info("Startup recovery complete. Replayed %d intervals.", caught_up)
                 self.last_executed_interval_utc = active.last_executed_interval_start_utc
+            else:
+                logger.info(
+                    "Session status is %s; preserving state without automatic catch-up replay.",
+                    active.status if active else "NONE",
+                )
         except Exception as exc:
             session.rollback()
             logger.error("Error during startup catch-up: %s", exc)
@@ -263,7 +281,24 @@ class VirtualTESWorker:
             elif self.engine.dialect.name == "sqlite":
                 with self.engine.connect().execution_options(isolation_level="AUTOCOMMIT") as conn:
                     conn.execute(text("PRAGMA wal_checkpoint(TRUNCATE);"))
-            logger.info("Periodic database maintenance completed successfully.")
+
+            # Calculate and monitor database size
+            db_size_mb = 0.0
+            try:
+                if self.engine.dialect.name == "sqlite":
+                    p_count = session.execute(text("PRAGMA page_count;")).scalar()
+                    p_size = session.execute(text("PRAGMA page_size;")).scalar()
+                    if p_count and p_size:
+                        db_size_mb = round((p_count * p_size) / (1024 * 1024), 2)
+                elif self.engine.dialect.name == "postgresql":
+                    sz_bytes = session.execute(text("SELECT pg_database_size(current_database());")).scalar()
+                    if sz_bytes:
+                        db_size_mb = round(sz_bytes / (1024 * 1024), 2)
+            except Exception as sz_err:
+                logger.debug("Database size probe exception: %s", sz_err)
+
+            self.last_db_size_mb = db_size_mb
+            logger.info("Periodic database maintenance complete. Database size: %.2f MB.", db_size_mb)
         except Exception as exc:
             session.rollback()
             logger.warning("Database maintenance encountered non-fatal error: %s", exc)

@@ -2,10 +2,10 @@
 
 {% block title %}Overview - GEN0 Energy Manager{% endblock %}
 {% block page_header %}Overview{% endblock %}
-{% block page_subtitle %}Real-time status and operational ledger for TES, Dryer, and Site Loads{% endblock %}
+{% block page_subtitle %}Real-time operational dashboard for Thermal Energy Storage, Virtual Dryer, and Site Economics{% endblock %}
 
 {% block content %}
-<!-- Supervisory Twin Provenance Notice & Engineering Banner -->
+<!-- Supervisory Twin Provenance Notice & Operational Status Banner -->
 <div class="engineering-banner">
   <div>
     <strong>ENGINEERING ESTIMATE ONLY — NOT YET CALIBRATED TO PHYSICAL GEN0:</strong> Parameters reflect the preliminary analytical model prior to hardware fabrication.
@@ -16,158 +16,191 @@
     {% endif %}
   </div>
   <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
-    <span class="badge badge-amber">NOT FOR FABRICATION</span>
-    <span class="badge badge-green">MARKET: LIVE ({{ system_state.active_market_provider if system_state is defined and system_state else 'LITGRID' }})</span>
-    <span class="badge badge-blue">TES: SIMULATED TWIN</span>
-    <span class="badge badge-blue">DRYER: SIMULATED KINETICS</span>
-    <span class="badge badge-slate">BESS: PROPOSED</span>
+    <span class="badge" style="background: {{ runtime_status.runtime_state_color|default('#2563eb') }}; color: #ffffff; font-weight: 700;">
+      STATE: {{ runtime_status.runtime_state|default('WAITING FOR NEXT INTERVAL') }}
+    </span>
+    <span class="badge badge-green">MARKET: LIVE ({{ system_state.active_market_provider if system_state is defined and system_state else (market.market_status.active_source|default('LITGRID')) }})</span>
+    <span class="badge badge-blue">TES: SIMULATED TWIN (15 kWh)</span>
+    <span class="badge badge-teal" style="background: #0d9488; color: #fff;">DRYER: VIRTUAL KINETICS (V1)</span>
+    <span class="badge badge-slate" title="Proposed future module: zero power, zero savings">BESS: PROPOSED / INACTIVE</span>
     <span class="badge badge-amber">PHYSICAL GEN0: NOT CONNECTED</span>
   </div>
 </div>
 
-<!-- TOP 4 KPI CARDS -->
-<div class="kpi-grid">
-  <!-- Card 1: Grid Power -->
-  <div class="kpi-card">
+<!-- TOP 5 PRIORITY KPI CARDS (Stage 8 Core Metrics) -->
+<div class="kpi-grid" style="grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); margin-bottom: 24px;">
+  <!-- 1. TES Stored Heat & SOC -->
+  <div class="kpi-card" style="border-top: 3px solid #ea580c;">
     <div class="kpi-top">
-      <div class="kpi-label">Grid Power</div>
-      <div class="kpi-icon">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v20M5 7l14 0M7 17l10 0M9 12l6 0"></path></svg>
+      <div class="kpi-label">TES Stored Heat &amp; SOC</div>
+      <div class="kpi-icon orange">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 2.5z"></path></svg>
       </div>
     </div>
-    <div class="kpi-value">
-      {{ "%.2f"|format(system_state.total_grid_import_kw if system_state is defined and system_state else (shadow.current_power_kw|default(2.5))) }}<span class="kpi-unit">kW</span>
+    <div class="kpi-value" style="color: #ea580c;">
+      {{ "%.2f"|format(system_state.stored_energy_kwh if system_state is defined and system_state else (shadow.stored_energy_kwh|default(9.30))) }}<span class="kpi-unit">kWh</span>
     </div>
-    <div class="kpi-sub">Limit: {{ grid_limit_kw|default(12.0) }} kW &bull; Headroom: {{ "%.2f"|format(system_state.grid_headroom_kw if system_state is defined and system_state else 9.95) }} kW</div>
+    <div class="kpi-sub">
+      SOC: <strong>{{ "%.1f"|format(system_state.soc_percent if system_state is defined and system_state else (shadow.soc_percent|default(62.0))) }}%</strong> &bull; Sand: <strong>{{ "%.0f"|format(system_state.sand_temperature_c if system_state is defined and system_state else (shadow.sand_temperature_c|default(197))) }}&deg;C</strong>
+    </div>
     <div class="kpi-bar">
-      {% set cur_p = system_state.total_grid_import_kw if system_state is defined and system_state else (shadow.current_power_kw|default(2.5)) %}
-      {% set grid_pct = ((cur_p / grid_limit_kw|default(12.0)) * 100)|round %}
-      <div class="kpi-bar-fill" style="width: {{ [grid_pct, 100]|min }}%; background: #2563eb;"></div>
+      {% set soc_w = system_state.soc_percent if system_state is defined and system_state else (shadow.soc_percent|default(62.0)) %}
+      <div class="kpi-bar-fill" style="width: {{ [soc_w, 100]|min }}%; background: #ea580c;"></div>
     </div>
   </div>
 
-  <!-- Card 2: Electricity Price -->
-  <div class="kpi-card">
+  <!-- 2. Current Electricity Price -->
+  <div class="kpi-card" style="border-top: 3px solid #f59e0b;">
     <div class="kpi-top">
-      <div class="kpi-label">Electricity Price</div>
+      <div class="kpi-label">Current Electricity Price</div>
       <div class="kpi-icon amber">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><path d="M12 6v6l4 2"></path></svg>
       </div>
     </div>
     <div class="kpi-value">
       {%- if system_state is defined and system_state and system_state.spot_price_eur_kwh is defined -%}
-        {{ "%.3f"|format(system_state.spot_price_eur_kwh) }}
+        &euro;{{ "%.3f"|format(system_state.spot_price_eur_kwh) }}
       {%- elif market and market.get('spot_price_eur_kwh') is not none -%}
-        {{ "%.3f"|format(market.get('spot_price_eur_kwh')) }}
+        &euro;{{ "%.3f"|format(market.get('spot_price_eur_kwh')) }}
       {%- elif market and market.get('cur_price') is not none -%}
-        {{ "%.3f"|format(market.get('cur_price') / 1000.0) }}
+        &euro;{{ "%.3f"|format(market.get('cur_price') / 1000.0) }}
       {%- else -%}
-        0.068
+        &euro;0.068
       {%- endif -%}
-      <span class="kpi-unit">&euro;/kWh spot</span>
+      <span class="kpi-unit">/kWh spot</span>
     </div>
     <div class="kpi-sub">
-      Effective: <strong>{% if system_state is defined and system_state and system_state.effective_price_eur_kwh is defined %}&euro;{{ "%.3f"|format(system_state.effective_price_eur_kwh) }}/kWh{% elif market and market.get('effective_price_eur_mwh') is not none %}&euro;{{ "%.3f"|format(market.get('effective_price_eur_mwh') / 1000.0) }}/kWh{% else %}&euro;0.099/kWh{% endif %}</strong> (Spot: &euro;{{ "%.2f"|format(system_state.spot_price_eur_mwh if system_state is defined and system_state else (market.cur_price|default(0.0))) }}/MWh)
+      Effective: <strong>{% if system_state is defined and system_state and system_state.effective_price_eur_kwh is defined %}&euro;{{ "%.3f"|format(system_state.effective_price_eur_kwh) }}/kWh{% elif market and market.get('effective_price_eur_mwh') is not none %}&euro;{{ "%.3f"|format(market.get('effective_price_eur_mwh') / 1000.0) }}/kWh{% else %}&euro;0.099/kWh{% endif %}</strong> &bull; &euro;{{ "%.2f"|format(system_state.spot_price_eur_mwh if system_state is defined and system_state else (market.cur_price|default(68.0))) }}/MWh
     </div>
     <div class="kpi-bar">
-      <div class="kpi-bar-fill" style="width: 45%; background: #f59e0b;"></div>
+      <div class="kpi-bar-fill" style="width: 48%; background: #f59e0b;"></div>
     </div>
   </div>
 
-  <!-- Card 3: TES Heat Available (Max HX) -->
-  <div class="kpi-card">
+  <!-- 3. Dryer Demand & Actual Heat Supplied -->
+  <div class="kpi-card" style="border-top: 3px solid #0d9488;">
     <div class="kpi-top">
-      <div class="kpi-label">TES Heat Available (Max HX)</div>
-      <div class="kpi-icon orange">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 2.5z"></path></svg>
-      </div>
-    </div>
-    <div class="kpi-value">
-      {{ "%.2f"|format(system_state.hx_max_power_kw if system_state is defined and system_state else (shadow.hx_max_available_kw|default(2.79))) }}<span class="kpi-unit">kW max</span>
-    </div>
-    <div class="kpi-sub">
-      Delivered: <strong>{{ "%.2f"|format(system_state.hx_delivered_heat_kw if system_state is defined and system_state else (shadow.hx_actual_heat_kw|default(1.50))) }} kW</strong> &bull; SOC: {{ "%.1f"|format(system_state.soc_percent if system_state is defined and system_state else (shadow.soc_percent|default(100.0))) }}%
-    </div>
-    <div class="kpi-bar">
-      <div class="kpi-bar-fill" style="width: {{ system_state.soc_percent if system_state is defined and system_state else (shadow.soc_percent|default(100.0)) }}%; background: #ea580c;"></div>
-    </div>
-  </div>
-
-  <!-- Card 4: Dryer Heat Demand -->
-  <div class="kpi-card">
-    <div class="kpi-top">
-      <div class="kpi-label">Dryer Heat Demand</div>
+      <div class="kpi-label">Dryer Heat Delivered</div>
       <div class="kpi-icon teal">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9.59 4.59A2 2 0 1 1 11 8H2m10.59 11.41A2 2 0 1 0 14 16H2m15.73-8.27A2.5 2.5 0 1 1 19.5 12H2"></path></svg>
       </div>
     </div>
-    <div class="kpi-value">
-      {{ "%.2f"|format(system_state.dryer_heat_demand_kw if system_state is defined and system_state else 1.50) }}<span class="kpi-unit">kW</span>
+    <div class="kpi-value" style="color: #0d9488;">
+      {{ "%.2f"|format(system_state.dryer_delivered_heat_kw if system_state is defined and system_state else (shadow.dryer.get('useful_heat_delivered_kw', shadow.dryer.get('heat_supplied_from_tes_kw', 1.50)) if shadow.dryer else 1.50)) }}<span class="kpi-unit">kW</span>
     </div>
-    <div class="kpi-sub">Delivered from TES: <strong style="color: #16a34a;">{{ "%.2f"|format(system_state.dryer_delivered_heat_kw if system_state is defined and system_state else 1.50) }} kW</strong></div>
+    <div class="kpi-sub">
+      Process Demand: <strong>{{ "%.2f"|format(system_state.dryer_heat_demand_kw if system_state is defined and system_state else (shadow.dryer.get('total_process_demand_kw', 1.50) if shadow.dryer else 1.50)) }} kW</strong> &bull; Supply: 70&deg;C
+    </div>
     <div class="kpi-bar">
       <div class="kpi-bar-fill" style="width: 100%; background: #0d9488;"></div>
     </div>
   </div>
+
+  <!-- 4. Current Optimizer Action -->
+  <div class="kpi-card" style="border-top: 3px solid #2563eb;">
+    <div class="kpi-top">
+      <div class="kpi-label">Current Optimizer Action</div>
+      <div class="kpi-icon blue">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline></svg>
+      </div>
+    </div>
+    <div class="kpi-value" style="font-size: 1.25rem; font-weight: 800; color: #2563eb;">
+      {{ shadow.action_now|default(shadow.current_action|default('DISCHARGE TO DRYER')) }}
+    </div>
+    <div class="kpi-sub">
+      Next: <strong>{{ shadow.next_market_boundary|default(shadow.next_boundary_time|default('Next 15m')) }}</strong> &bull; Grid: {{ "%.2f"|format(shadow.grid_total_kw|default(shadow.current_power_kw|default(2.50))) }} kW
+    </div>
+    <div class="kpi-bar">
+      <div class="kpi-bar-fill" style="width: 65%; background: #2563eb;"></div>
+    </div>
+  </div>
+
+  <!-- 5. Savings Today -->
+  <div class="kpi-card" style="border-top: 3px solid #16a34a; background: #f0fdf4;">
+    <div class="kpi-top">
+      <div class="kpi-label" style="color: #166534;">Savings Today</div>
+      <div class="kpi-icon green">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="1" x2="12" y2="23"></line><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path></svg>
+      </div>
+    </div>
+    <div class="kpi-value" style="color: #166534;">
+      &euro;{{ "%.2f"|format(shadow.ledger.get('today_net_savings_eur', shadow.ledger.get('net_savings_today_eur', 0.0)) if shadow.ledger else 0.0) }}
+    </div>
+    <div class="kpi-sub" style="color: #166534;">
+      <span class="badge badge-green" style="font-size: 0.65rem; padding: 1px 5px;">VIRTUAL ESTIMATED SAVINGS</span> Inventory-Adjusted
+    </div>
+    <div class="kpi-bar">
+      <div class="kpi-bar-fill" style="width: 80%; background: #16a34a;"></div>
+    </div>
+  </div>
 </div>
 
-<!-- ENERGY FLOW (CURRENT STATE) -->
+<!-- 6. GRID -> TES -> HX -> DRYER ENERGY-FLOW DIAGRAM -->
 <div class="card" style="margin-bottom: 24px;">
   <div class="card-header">
     <h3 class="card-title">
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline></svg>
-      Energy Flow (Current State)
+      System Energy Flow (Current 15-Minute State)
     </h3>
-    <span class="badge badge-slate">REAL-TIME SIMULATION MAPPING</span>
+    <div style="display: flex; gap: 8px; align-items: center;">
+      <span class="badge badge-blue">ELECTRICAL &bull; 12 kW LIMIT</span>
+      <span class="badge badge-amber">THERMAL &bull; 80&ndash;300 &deg;C</span>
+      <span class="badge badge-teal" style="background: #0d9488; color: #fff;">PNEUMATIC &bull; 80 m&sup3;/h</span>
+    </div>
   </div>
 
-  <div style="display: flex; align-items: center; justify-content: space-between; overflow-x: auto; padding: 14px 4px; gap: 8px;">
+  <div style="display: flex; align-items: center; justify-content: space-between; overflow-x: auto; padding: 16px 6px; gap: 10px;">
     <!-- Node 1: Grid -->
     <div style="flex: 1; min-width: 140px; background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 8px; padding: 14px 10px; text-align: center;">
-      <div style="font-size: 0.74rem; font-weight: 700; color: #1e40af; margin-bottom: 4px;">Grid</div>
+      <div style="font-size: 0.74rem; font-weight: 700; color: #1e40af; margin-bottom: 4px; text-transform: uppercase;">Grid Import</div>
       <div style="color: #2563eb; margin-bottom: 4px;">
         <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v20M5 7l14 0M7 17l10 0M9 12l6 0"></path></svg>
       </div>
       <div style="font-size: 1.15rem; font-weight: 800; color: #0f172a;">{{ "%.2f"|format(system_state.total_grid_import_kw if system_state is defined and system_state else (shadow.current_power_kw|default(2.5))) }} kW</div>
-      <div style="font-size: 0.7rem; color: #64748b;">(limit {{ grid_limit_kw|default(12.0) }} kW)</div>
+      <div style="font-size: 0.7rem; color: #64748b;">Breaker Limit: {{ grid_limit_kw|default(12.0) }} kW</div>
+      <div style="font-size: 0.68rem; color: #166534; font-weight: 600; margin-top: 2px;">Headroom: {{ "%.2f"|format(system_state.grid_headroom_kw if system_state is defined and system_state else 9.95) }} kW</div>
     </div>
 
-    <!-- Arrow -->
-    <div style="color: #2563eb; font-weight: bold; font-size: 1.2rem; flex-shrink: 0;">&rarr;</div>
+    <!-- Arrow Electrical -->
+    <div style="color: #2563eb; font-weight: bold; font-size: 1.3rem; flex-shrink: 0;" title="Electrical Charging Import">&rarr;</div>
 
-    <!-- Node 2: TES -->
-    <div style="flex: 1.2; min-width: 160px; background: #fffbeb; border: 1px solid #fde68a; border-radius: 8px; padding: 14px 10px; text-align: center;">
-      <div style="font-size: 0.74rem; font-weight: 700; color: #92400e; margin-bottom: 4px;">TES Thermal Bed</div>
+    <!-- Node 2: TES Thermal Bed -->
+    <div style="flex: 1.2; min-width: 165px; background: #fffbeb; border: 1px solid #fde68a; border-radius: 8px; padding: 14px 10px; text-align: center;">
+      <div style="font-size: 0.74rem; font-weight: 700; color: #92400e; margin-bottom: 4px; text-transform: uppercase;">TES Sand Bed (275.7 kg)</div>
       <div style="color: #d97706; margin-bottom: 4px;">
         <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="6" y="2" width="12" height="20" rx="4"></rect><line x1="6" y1="8" x2="18" y2="8"></line><line x1="6" y1="14" x2="18" y2="14"></line></svg>
       </div>
       <div style="font-size: 1.15rem; font-weight: 800; color: #0f172a;">{{ "%.2f"|format(system_state.hx_delivered_heat_kw if system_state is defined and system_state else (shadow.hx_actual_heat_kw|default(1.50))) }} kW out</div>
       <div style="font-size: 0.72rem; color: #78350f;">
-        {{ "%.1f"|format(system_state.stored_energy_kwh if system_state is defined and system_state else (shadow.stored_energy_kwh|default(15.0))) }} kWh ({{ "%.0f"|format(system_state.soc_percent if system_state is defined and system_state else (shadow.soc_percent|default(100))) }}%) &bull; T: {{ "%.0f"|format(system_state.sand_temperature_c if system_state is defined and system_state else (shadow.sand_temperature_c|default(300))) }}&deg;C
+        Stored: <strong>{{ "%.1f"|format(system_state.stored_energy_kwh if system_state is defined and system_state else (shadow.stored_energy_kwh|default(9.3))) }} kWh</strong> ({{ "%.0f"|format(system_state.soc_percent if system_state is defined and system_state else (shadow.soc_percent|default(62))) }}%)
+      </div>
+      <div style="font-size: 0.7rem; color: #92400e; font-weight: 600; margin-top: 2px;">
+        Bed Temp: {{ "%.0f"|format(system_state.sand_temperature_c if system_state is defined and system_state else (shadow.sand_temperature_c|default(197))) }}&deg;C
       </div>
     </div>
 
-    <!-- Arrow -->
-    <div style="color: #ea580c; font-weight: bold; font-size: 1.2rem; flex-shrink: 0;">&rarr;</div>
+    <!-- Arrow Thermal -->
+    <div style="color: #ea580c; font-weight: bold; font-size: 1.3rem; flex-shrink: 0;" title="Thermal Conduction to HX">&rarr;</div>
 
-    <!-- Node 3: Heat Exchanger -->
-    <div style="flex: 1.1; min-width: 150px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 14px 10px; text-align: center;">
-      <div style="font-size: 0.74rem; font-weight: 700; color: #475569; margin-bottom: 4px;">Helical Air HX</div>
+    <!-- Node 3: Helical Air HX -->
+    <div style="flex: 1.1; min-width: 155px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 14px 10px; text-align: center;">
+      <div style="font-size: 0.74rem; font-weight: 700; color: #475569; margin-bottom: 4px; text-transform: uppercase;">Helical Air HX (1.55 m&sup2;)</div>
       <div style="color: #64748b; margin-bottom: 4px;">
         <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"></circle><path d="M12 3v18"></path><path d="M3 12h18"></path></svg>
       </div>
       <div style="font-size: 1.15rem; font-weight: 800; color: #0f172a;">{{ "%.2f"|format(system_state.hx_max_power_kw if system_state is defined and system_state else (shadow.hx_max_available_kw|default(2.79))) }} kW max</div>
       <div style="font-size: 0.7rem; color: #64748b;">
-        Delivery: {{ "%.2f"|format(system_state.hx_delivered_heat_kw if system_state is defined and system_state else (shadow.hx_actual_heat_kw|default(1.50))) }} kW &bull; Sand: {{ "%.0f"|format(system_state.sand_temperature_c if system_state is defined and system_state else (shadow.sand_temperature_c|default(300))) }}&deg;C
+        Delivery: <strong>{{ "%.2f"|format(system_state.hx_delivered_heat_kw if system_state is defined and system_state else (shadow.hx_actual_heat_kw|default(1.50))) }} kW</strong>
       </div>
+      <div style="font-size: 0.68rem; color: #475569; margin-top: 2px;">&epsilon;-NTU model &bull; U=9 W/m&sup2;K</div>
     </div>
 
-    <!-- Arrow -->
-    <div style="color: #0d9488; font-weight: bold; font-size: 1.2rem; flex-shrink: 0;">&rarr;</div>
+    <!-- Arrow Process Heat -->
+    <div style="color: #0d9488; font-weight: bold; font-size: 1.3rem; flex-shrink: 0;" title="Sensible Air Delivery">&rarr;</div>
 
     <!-- Node 4: Dryer -->
-    <div style="flex: 1.2; min-width: 160px; background: #f0fdfa; border: 1px solid #99f6e4; border-radius: 8px; padding: 14px 10px; text-align: center;">
-      <div style="font-size: 0.74rem; font-weight: 700; color: #0f766e; margin-bottom: 4px;">Dryer (Virtual V1)</div>
+    <div style="flex: 1.2; min-width: 165px; background: #f0fdfa; border: 1px solid #99f6e4; border-radius: 8px; padding: 14px 10px; text-align: center;">
+      <div style="font-size: 0.74rem; font-weight: 700; color: #0f766e; margin-bottom: 4px; text-transform: uppercase;">Dryer (Virtual V1)</div>
       <div style="color: #0d9488; margin-bottom: 4px;">
         <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="16" rx="2"></rect><circle cx="12" cy="12" r="4"></circle></svg>
       </div>
@@ -175,68 +208,79 @@
         {% if shadow.dryer and shadow.dryer.get('useful_heat_delivered_kw') is not none %}{{ "%.2f"|format(shadow.dryer.get('useful_heat_delivered_kw')) }}{% elif shadow.dryer and shadow.dryer.get('heat_supplied_from_tes_kw') is not none %}{{ "%.2f"|format(shadow.dryer.get('heat_supplied_from_tes_kw')) }}{% else %}1.50{% endif %} kW
       </div>
       <div style="font-size: 0.7rem; color: #115e59;">
-        Air: {% if shadow.dryer %}{{ "%.0f"|format(shadow.dryer.get('inlet_temp_c', 40.0)) }} &rarr; {{ "%.0f"|format(shadow.dryer.get('achieved_supply_temp_c', 70.0)) }}{% else %}40 &rarr; 70{% endif %}&deg;C &bull; Flow: 80 m&sup3;/h
+        Air: {% if shadow.dryer %}{{ "%.0f"|format(shadow.dryer.get('inlet_temp_c', 40.0)) }} &rarr; {{ "%.0f"|format(shadow.dryer.get('achieved_supply_temp_c', 70.0)) }}{% else %}40 &rarr; 70{% endif %}&deg;C
       </div>
+      <div style="font-size: 0.68rem; color: #0f766e; margin-top: 2px;">Circulation: 80 m&sup3;/h</div>
     </div>
 
-    <!-- Dashed Arrow -->
-    <div style="color: #94a3b8; font-weight: bold; font-size: 1.2rem; flex-shrink: 0;">&dash;&rarr;</div>
+    <!-- Dashed Branch to Inactive BESS -->
+    <div style="color: #94a3b8; font-weight: bold; font-size: 1.3rem; flex-shrink: 0;" title="Optional Proposed Storage">&dash;&rarr;</div>
 
-    <!-- Node 5: BESS (Optional) -->
-    <div style="flex: 1; min-width: 130px; background: #f8fafc; border: 1px dashed #cbd5e1; border-radius: 8px; padding: 14px 10px; text-align: center; opacity: 0.85;">
-      <div style="font-size: 0.74rem; font-weight: 700; color: #64748b; margin-bottom: 4px;">BESS (Optional)</div>
+    <!-- Node 5: BESS (Proposed / Inactive) -->
+    <div style="flex: 1; min-width: 140px; background: #f8fafc; border: 1px dashed #cbd5e1; border-radius: 8px; padding: 14px 10px; text-align: center; opacity: 0.85;">
+      <div style="font-size: 0.74rem; font-weight: 700; color: #64748b; margin-bottom: 4px; text-transform: uppercase;">BESS (Proposed)</div>
       <div style="color: #94a3b8; margin-bottom: 4px;">
         <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="7" width="16" height="10" rx="2"></rect><line x1="20" y1="10" x2="20" y2="14"></line></svg>
       </div>
       <div style="font-size: 1.15rem; font-weight: 800; color: #64748b;">0.0 kW</div>
-      <div style="font-size: 0.7rem; color: #94a3b8;">SOC: 50% (proposed)</div>
+      <div style="font-size: 0.7rem; color: #94a3b8;">Status: INACTIVE</div>
+      <div style="font-size: 0.68rem; color: #94a3b8; margin-top: 2px;">Savings: &euro;0.00</div>
     </div>
   </div>
 </div>
 
-<!-- MIDDLE 3 PANELS: TES Status, Dryer Process, Drying Progress -->
-<div class="grid-3" style="margin-bottom: 24px;">
-  <!-- Panel 1: TES Status with Sand Temperature Tank Visual -->
+<!-- VISUAL PROCESS STATE: TES Status & Dryer Kinetics (Side by Side) -->
+<div class="grid-2" style="margin-bottom: 24px;">
+  <!-- Panel 1: TES Thermal Status & Sand Temperature Tank -->
   <div class="card">
     <div class="card-header">
       <h3 class="card-title">
         <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#ea580c" stroke-width="2"><path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 2.5z"></path></svg>
-        TES Status
+        TES Thermal Status
       </h3>
-      <a href="/dashboard/physical" class="btn btn-outline btn-sm">Details &rarr;</a>
+      <a href="/dashboard/physical" class="btn btn-outline btn-sm">Physical Model &rarr;</a>
     </div>
 
-    <div style="display: flex; gap: 16px; align-items: center;">
+    <div style="display: flex; gap: 20px; align-items: center;">
       <!-- Metrics List -->
       <div style="flex: 1;">
         <div style="margin-bottom: 12px;">
-          <div style="font-size: 0.72rem; color: #64748b; font-weight: 600; text-transform: uppercase;">Sand Temperature</div>
-          <div style="font-size: 1.6rem; font-weight: 800; color: #0f172a;">{{ "%.1f"|format(shadow.sand_temperature_c|default(197.0)) }} &deg;C</div>
+          <div style="font-size: 0.72rem; color: #64748b; font-weight: 600; text-transform: uppercase;">Bulk Sand Bed Temperature</div>
+          <div style="font-size: 1.8rem; font-weight: 800; color: #0f172a;">{{ "%.1f"|format(shadow.sand_temperature_c|default(197.0)) }} &deg;C</div>
+          <div style="font-size: 0.72rem; color: #64748b;">Physical span: 80 &deg;C (0% SOC) &rarr; 300 &deg;C (100% SOC)</div>
         </div>
-        <div style="margin-bottom: 8px;">
-          <div style="font-size: 0.72rem; color: #64748b;">Stored Heat:</div>
-          <strong style="font-size: 0.95rem;">{{ "%.2f"|format(shadow.stored_energy_kwh|default(9.3)) }} kWh</strong>
-          <span style="font-size: 0.8rem; color: #ea580c;">({{ "%.1f"|format(shadow.soc_percent|default(62.0)) }}%)</span>
-        </div>
-        <div style="margin-bottom: 8px;">
-          <div style="font-size: 0.72rem; color: #64748b;">Heat Output (to dryer):</div>
-          <strong style="font-size: 0.95rem;">{{ "%.2f"|format(shadow.hx_actual_heat_kw|default(1.68)) }} kW</strong>
-        </div>
-        <div>
-          <div style="font-size: 0.72rem; color: #64748b;">Heater Power (charging):</div>
-          <strong style="font-size: 0.95rem;">{{ "%.2f"|format(shadow.heater_power_kw|default(0.0)) }} kW</strong>
-        </div>
+
+        <table class="engineering-table" style="font-size: 0.8rem; margin-bottom: 0;">
+          <tr>
+            <td style="color: #64748b;">Stored Heat:</td>
+            <td class="num-col"><strong>{{ "%.2f"|format(shadow.stored_energy_kwh|default(9.30)) }} kWh</strong> <span style="color: #ea580c;">({{ "%.1f"|format(shadow.soc_percent|default(62.0)) }}%)</span></td>
+          </tr>
+          <tr>
+            <td style="color: #64748b;">Dispatchable (10-100%):</td>
+            <td class="num-col"><strong>{{ "%.2f"|format(shadow.dispatchable_remaining_kwh|default(7.80)) }} kWh</strong></td>
+          </tr>
+          <tr>
+            <td style="color: #64748b;">HX Output to Dryer:</td>
+            <td class="num-col" style="color: #ea580c;"><strong>{{ "%.2f"|format(shadow.hx_actual_heat_kw|default(1.50)) }} kW</strong></td>
+          </tr>
+          <tr>
+            <td style="color: #64748b;">Heater Charging Power:</td>
+            <td class="num-col"><strong>{{ "%.2f"|format(shadow.heater_actual_kw|default(shadow.heater_power_kw|default(0.0))) }} kW</strong></td>
+          </tr>
+          <tr>
+            <td style="color: #64748b;">Equivalent Sand Mass:</td>
+            <td class="num-col">275.7 kg quartz sand</td>
+          </tr>
+        </table>
       </div>
 
       <!-- Vertical Sand Tank Visual -->
       <div style="display: flex; align-items: center; gap: 8px; flex-shrink: 0;">
-        <div style="width: 52px; height: 160px; border: 3px solid #64748b; border-radius: 26px; overflow: hidden; background: #e2e8f0; position: relative; box-shadow: inset 0 2px 4px rgba(0,0,0,0.15);">
-          <!-- Dynamic fill according to temperature (80 to 300 C) -->
+        <div style="width: 52px; height: 170px; border: 3px solid #64748b; border-radius: 26px; overflow: hidden; background: #e2e8f0; position: relative; box-shadow: inset 0 2px 4px rgba(0,0,0,0.15);">
           {% set fill_pct = [([((shadow.sand_temperature_c|default(197.0) - 20) / 280) * 100, 5]|max), 100]|min %}
           <div style="position: absolute; bottom: 0; left: 0; right: 0; height: {{ fill_pct }}%; background: linear-gradient(to top, #ea580c, #f59e0b, #eab308); transition: height 0.5s ease;"></div>
         </div>
-        <!-- Ticks -->
-        <div style="font-size: 0.65rem; color: #64748b; display: flex; flex-direction: column; justify-content: space-between; height: 160px; line-height: 1;">
+        <div style="font-size: 0.65rem; color: #64748b; display: flex; flex-direction: column; justify-content: space-between; height: 170px; line-height: 1;">
           <span>300&deg;C</span>
           <span>250&deg;C</span>
           <span>200&deg;C</span>
@@ -248,158 +292,74 @@
     </div>
   </div>
 
-  <!-- Panel 2: Dryer Process Card -->
+  <!-- Panel 2: Dryer Process & Timber Batch Kinetics -->
   <div class="card">
     <div class="card-header">
       <h3 class="card-title">
-        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#0d9488" stroke-width="2"><path d="M9.59 4.59A2 2 0 1 1 11 8H2m10.59 11.41A2 2 0 1 0 14 16H2m15.73-8.27A2.5 2.5 0 1 1 19.5 12H2"></path></svg>
-        Dryer Process
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#0d9488" stroke-width="2"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"></path><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"></path></svg>
+        Virtual Dryer V1 &amp; Timber Kinetics
       </h3>
-      <span class="badge badge-green">{% if shadow.dryer %}{{ shadow.dryer.get('status', 'Running') }}{% else %}Running{% endif %}</span>
-    </div>
-
-    <table class="engineering-table" style="font-size: 0.8rem;">
-      <tr>
-        <td style="color: #64748b;">Required Inlet Temp:</td>
-        <td class="num-col"><strong>{% if shadow.dryer %}{{ "%.1f"|format(shadow.dryer.get('target_supply_temp_c', 70.0)) }}{% else %}70.0{% endif %} &deg;C</strong></td>
-      </tr>
-      <tr>
-        <td style="color: #64748b;">Inlet Air Temperature:</td>
-        <td class="num-col">{% if shadow.dryer %}{{ "%.1f"|format(shadow.dryer.get('inlet_temp_c', shadow.dryer.get('inlet_air_temp_c', 40.0))) }}{% else %}40.0{% endif %} &deg;C</td>
-      </tr>
-      <tr>
-        <td style="color: #64748b;">Achieved Supply Air:</td>
-        <td class="num-col"><strong>{% if shadow.dryer %}{{ "%.1f"|format(shadow.dryer.get('achieved_supply_temp_c', 70.0)) }}{% else %}70.0{% endif %} &deg;C</strong></td>
-      </tr>
-      <tr>
-        <td style="color: #64748b;">Airflow:</td>
-        <td class="num-col">{% if shadow.dryer %}{{ "%.0f"|format(shadow.dryer.get('airflow_m3_h', 80.0)) }}{% else %}80{% endif %} m&sup3;/h</td>
-      </tr>
-      <tr>
-        <td style="color: #64748b;">Process Heat Demand:</td>
-        <td class="num-col"><strong>{% if shadow.dryer %}{{ "%.2f"|format(shadow.dryer.get('total_process_demand_kw', shadow.dryer.get('total_heat_demand_kw', 1.50))) }}{% else %}1.50{% endif %} kW</strong></td>
-      </tr>
-      <tr>
-        <td style="color: #64748b;">Heat Supplied from TES:</td>
-        <td class="num-col" style="color: #ea580c;"><strong>{% if shadow.dryer %}{{ "%.2f"|format(shadow.dryer.get('useful_heat_delivered_kw', shadow.dryer.get('heat_supplied_from_tes_kw', 1.50))) }}{% else %}1.50{% endif %} kW</strong></td>
-      </tr>
-      <tr>
-        <td style="color: #64748b;">Backup Electric Heater:</td>
-        <td class="num-col">{% if shadow.dryer %}{{ "%.2f"|format(shadow.dryer.get('backup_heater_power_kw', shadow.dryer.get('backup_electric_power_kw', 0.0))) }}{% else %}0.00{% endif %} kW</td>
-      </tr>
-      <tr>
-        <td style="color: #64748b;">Blower Fan Power:</td>
-        <td class="num-col">{% if shadow.dryer %}{{ "%.3f"|format(shadow.dryer.get('blower_power_kw', shadow.dryer.get('blower_electric_power_kw', 0.040))) }}{% else %}0.040{% endif %} kW</td>
-      </tr>
-    </table>
-    <div style="margin-top: 10px; text-align: right;">
       <a href="/dashboard/dryer" class="btn btn-outline btn-sm">Configure Recipe &rarr;</a>
     </div>
-  </div>
-
-  <!-- Panel 3: Drying Progress (Virtual Batch) -->
-  <div class="card">
-    <div class="card-header">
-      <h3 class="card-title">
-        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#854d0e" stroke-width="2"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"></path><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"></path></svg>
-        Drying Progress (Virtual)
-      </h3>
-      <span class="badge badge-slate">SIMULATED ESTIMATE</span>
-    </div>
 
     <table class="engineering-table" style="font-size: 0.8rem;">
       <tr>
-        <td style="color: #64748b;">Timber Mass (dry basis):</td>
+        <td style="color: #64748b;">Target Supply Air / Achieved:</td>
+        <td class="num-col"><strong>{% if shadow.dryer %}{{ "%.0f"|format(shadow.dryer.get('target_supply_temp_c', 70.0)) }}{% else %}70{% endif %} &deg;C</strong> / <strong style="color: #0d9488;">{% if shadow.dryer %}{{ "%.1f"|format(shadow.dryer.get('achieved_supply_temp_c', 70.0)) }}{% else %}70.0{% endif %} &deg;C</strong></td>
+      </tr>
+      <tr>
+        <td style="color: #64748b;">Inlet Air / Exhaust Air:</td>
+        <td class="num-col">{% if shadow.dryer %}{{ "%.0f"|format(shadow.dryer.get('inlet_temp_c', 40.0)) }}{% else %}40{% endif %} &deg;C / {% if shadow.dryer %}{{ "%.1f"|format(shadow.dryer.get('exhaust_air_temp_c', 48.0)) }}{% else %}48.0{% endif %} &deg;C</td>
+      </tr>
+      <tr>
+        <td style="color: #64748b;">Process Heat Demand / TES Delivered:</td>
+        <td class="num-col"><strong>{{ "%.2f"|format(shadow.dryer.get('total_process_demand_kw', 1.50) if shadow.dryer else 1.50) }} kW</strong> / <strong style="color: #ea580c;">{{ "%.2f"|format(shadow.dryer.get('useful_heat_delivered_kw', 1.50) if shadow.dryer else 1.50) }} kW</strong></td>
+      </tr>
+      <tr>
+        <td style="color: #64748b;">Timber Mass (Dry Basis):</td>
         <td class="num-col"><strong>{% if shadow.dryer %}{{ "%.0f"|format(shadow.dryer.get('batch_dry_mass_kg', 500.0)) }}{% else %}500{% endif %} kg</strong></td>
       </tr>
       <tr>
-        <td style="color: #64748b;">Initial Moisture Content:</td>
-        <td class="num-col">{% if shadow.dryer %}{{ "%.1f"|format(shadow.dryer.get('batch_initial_moisture_fraction', 0.50) * 100) }}{% else %}50.0{% endif %} %</td>
-      </tr>
-      <tr>
-        <td style="color: #64748b;">Target Moisture Content:</td>
-        <td class="num-col">{% if shadow.dryer %}{{ "%.1f"|format(shadow.dryer.get('batch_target_moisture_fraction', 0.15) * 100) }}{% else %}15.0{% endif %} %</td>
+        <td style="color: #64748b;">Moisture Content (Initial &rarr; Target):</td>
+        <td class="num-col">{% if shadow.dryer %}{{ "%.0f"|format(shadow.dryer.get('batch_initial_moisture_fraction', 0.50) * 100) }}% &rarr; {{ "%.0f"|format(shadow.dryer.get('batch_target_moisture_fraction', 0.15) * 100) }}%{% else %}50% &rarr; 15%{% endif %}</td>
       </tr>
       <tr>
         <td style="color: #64748b;">Current Moisture Content:</td>
-        <td class="num-col"><strong style="color: #0284c7;">{% if shadow.dryer %}{{ "%.1f"|format(shadow.dryer.get('current_moisture_percent', 32.0)) }}{% else %}32.0{% endif %} %</strong></td>
+        <td class="num-col"><strong style="color: #0284c7; font-size: 0.95rem;">{% if shadow.dryer %}{{ "%.1f"|format(shadow.dryer.get('current_moisture_percent', 32.0)) }}{% else %}32.0{% endif %} %</strong></td>
       </tr>
       <tr>
-        <td style="color: #64748b;">Water Removed:</td>
-        <td class="num-col"><strong>{% if shadow.dryer %}{{ "%.1f"|format(shadow.dryer.get('water_removed_total_kg', shadow.dryer.get('batch_water_removed_kg', 45.0))) }}{% else %}45.0{% endif %} kg</strong></td>
-      </tr>
-      <tr>
-        <td style="color: #64748b;">Est. Time Remaining:</td>
-        <td class="num-col">{% if shadow.dryer %}{{ "%.1f"|format(shadow.dryer.get('estimated_remaining_hours', shadow.dryer.get('batch_est_remaining_hours', 18.0))) }}{% else %}18.0{% endif %} hours</td>
+        <td style="color: #64748b;">Water Removed / Est. Remaining:</td>
+        <td class="num-col"><strong>{% if shadow.dryer %}{{ "%.1f"|format(shadow.dryer.get('water_removed_total_kg', shadow.dryer.get('batch_water_removed_kg', 45.0))) }}{% else %}45.0{% endif %} kg</strong> / {% if shadow.dryer %}{{ "%.1f"|format(shadow.dryer.get('estimated_remaining_hours', shadow.dryer.get('batch_est_remaining_hours', 18.0))) }}{% else %}18.0{% endif %} h</td>
       </tr>
     </table>
 
-    <div style="margin-top: 14px;">
+    <div style="margin-top: 10px;">
       {% set prog_pct = [([shadow.dryer.get('batch_progress_percent', 36.0) if shadow.dryer else 36.0, 0]|max), 100]|min %}
       <div style="display: flex; justify-content: space-between; font-size: 0.75rem; margin-bottom: 4px;">
-        <span style="color: #64748b;">Batch Progress:</span>
+        <span style="color: #64748b;">Timber Batch Progress:</span>
         <strong>{{ "%.0f"|format(prog_pct) }}% complete</strong>
       </div>
       <div class="kpi-bar" style="height: 8px;">
-        <div class="kpi-bar-fill" style="width: {{ prog_pct }}%; background: #16a34a;"></div>
+        <div class="kpi-bar-fill" style="width: {{ prog_pct }}%; background: #0d9488;"></div>
       </div>
     </div>
   </div>
 </div>
 
-<!-- KEY PERFORMANCE (TODAY) SETTLEMENT SUMMARY -->
-<div class="card" style="margin-bottom: 24px; border-left: 4px solid #16a34a;">
-  <div class="card-header">
-    <h3 class="card-title">
-      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#16a34a" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
-      Key Performance (Today) — 15-Minute Settlement Ledger
-    </h3>
-    <a href="/dashboard/history" class="btn btn-outline btn-sm">Full Ledger History &rarr;</a>
-  </div>
-
-  <div class="kpi-grid" style="grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); margin-bottom: 0;">
-    <div class="kpi-card" style="margin-bottom: 0;">
-      <div class="kpi-label">Electricity Used by TES</div>
-      <div class="kpi-value" style="color: #2563eb;">{{ "%.2f"|format(shadow.ledger.get('tes_electricity_used_kwh', shadow.ledger.get('tes_charge_kwh', 0.0)) if shadow.ledger else 0.0) }}<span class="kpi-unit">kWh</span></div>
-      <div class="kpi-sub">Total charging electricity today</div>
-    </div>
-    <div class="kpi-card" style="margin-bottom: 0;">
-      <div class="kpi-label">Operating Electricity Cost</div>
-      <div class="kpi-value">&euro;{{ "%.2f"|format(shadow.ledger.get('today_actual_cost_eur', shadow.ledger.get('electricity_cost_today_eur', 0.0)) if shadow.ledger else 0.0) }}</div>
-      <div class="kpi-sub">TES charging + backup + blower + aux</div>
-    </div>
-    <div class="kpi-card" style="margin-bottom: 0;">
-      <div class="kpi-label">Heat Delivered to Dryer</div>
-      <div class="kpi-value">{{ "%.1f"|format(shadow.ledger.get('today_heat_delivered_kwh', shadow.ledger.get('heat_delivered_today_kwh', 0.0)) if shadow.ledger else 0.0) }}<span class="kpi-unit">kWh</span></div>
-      <div class="kpi-sub">Total useful thermal enthalpy</div>
-    </div>
-    <div class="kpi-card" style="margin-bottom: 0;">
-      <div class="kpi-label">Water Evaporated (est.)</div>
-      <div class="kpi-value">{{ "%.1f"|format(system_state.dryer_water_removed_total_kg if system_state is defined and system_state else (shadow.dryer.get('water_removed_total_kg', shadow.dryer.get('batch_water_removed_kg', 0.0)) if shadow.dryer else 0.0)) }}<span class="kpi-unit">kg</span></div>
-      <div class="kpi-sub">Timber drying moisture removal</div>
-    </div>
-    <div class="kpi-card" style="margin-bottom: 0; background: #f0fdf4; border-color: #bbf7d0;">
-      <div class="kpi-label" style="color: #166534;">Net Savings vs Direct Electric</div>
-      <div class="kpi-value" style="color: #166534;">&euro;{{ "%.2f"|format(shadow.ledger.get('today_net_savings_eur', shadow.ledger.get('net_savings_today_eur', 0.0)) if shadow.ledger else 0.0) }}</div>
-      <div class="kpi-sub" style="color: #166534;">Inventory-adjusted (&Delta;V<sub>inv</sub>)</div>
-    </div>
-  </div>
-</div>
-
-<!-- CHARTS ROW: 24h Market Price & Dispatch | Thermal System Temperatures -->
+<!-- 7. CHARTS ROW: 24h Price & Dispatch | Thermal & Dryer Temperature Trends -->
 <div class="grid-2" style="margin-bottom: 24px;">
-  <!-- Chart 1: Market Price (24h) -->
+  <!-- Chart 1: Electricity Price & Dispatch Schedule (24h) -->
   <div class="card">
     <div class="card-header">
-      <h3 class="card-title">Electricity Price &amp; Spot Forecast (24h)</h3>
-      <span class="badge badge-blue">EUR / MWh</span>
+      <h3 class="card-title">Electricity Price &amp; Dispatch Schedule (24h)</h3>
+      <span class="badge badge-blue">EUR / MWh &bull; LITGRID</span>
     </div>
     <div class="chart-box">
       <canvas id="overviewPriceChart"></canvas>
     </div>
   </div>
 
-  <!-- Chart 2: Thermal System Temperatures (8h) -->
+  <!-- Chart 2: Thermal System & Dryer Temperatures (8h) -->
   <div class="card">
     <div class="card-header">
       <h3 class="card-title">Thermal System &amp; Dryer Temperatures (Last 8 Hours)</h3>
@@ -411,58 +371,135 @@
   </div>
 </div>
 
-<!-- REFERENCE GEN0 ENGINEERING HARDWARE & CAPACITY BASELINE -->
-<div class="card" style="margin-bottom: 24px;">
+<!-- 8. SETTLEMENT LEDGER (TODAY) KEY PERFORMANCE -->
+<div class="card" style="margin-bottom: 24px; border-left: 4px solid #16a34a;">
   <div class="card-header">
-    <h3 class="card-title">
-      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"></rect><line x1="3" y1="9" x2="21" y2="9"></line><line x1="9" y1="21" x2="9" y2="9"></line></svg>
-      Reference Gen0 Engineering &amp; Sizing Baseline
-    </h3>
-    <span class="badge badge-slate">PRELIMINARY ANALYTICAL MODEL</span>
+    <div>
+      <h3 class="card-title" style="margin-bottom: 2px;">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#16a34a" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
+        Today's 15-Minute Settlement Ledger Summary
+      </h3>
+      <span style="font-size: 0.75rem; color: #64748b;">Audited physical settlement vs. direct-electric heating baseline</span>
+    </div>
+    <a href="/dashboard/history" class="btn btn-outline btn-sm">Full History &amp; Savings Ledger &rarr;</a>
   </div>
 
-  <div class="kpi-grid" style="grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); margin-bottom: 16px;">
+  <div class="kpi-grid" style="grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); margin-bottom: 0;">
     <div class="kpi-card" style="margin-bottom: 0;">
-      <div class="kpi-label">Full-Span Thermal Capacity</div>
-      <div class="kpi-value">{{ "%.2f"|format(full_span_capacity_kwh|default(15.0)) }}<span class="kpi-unit">kWh</span></div>
-      <div class="kpi-sub">80 &deg;C &rarr; 300 &deg;C sensible</div>
+      <div class="kpi-label">Electricity Used by TES</div>
+      <div class="kpi-value" style="color: #2563eb;">{{ "%.2f"|format(shadow.ledger.get('tes_electricity_used_kwh', shadow.ledger.get('tes_charge_kwh', 0.0)) if shadow.ledger else 0.0) }}<span class="kpi-unit">kWh</span></div>
+      <div class="kpi-sub">Total charging import</div>
     </div>
     <div class="kpi-card" style="margin-bottom: 0;">
-      <div class="kpi-label">Dispatchable Capacity</div>
-      <div class="kpi-value">{{ "%.2f"|format(dispatchable_capacity_kwh|default(13.5)) }}<span class="kpi-unit">kWh</span></div>
-      <div class="kpi-sub">10% &rarr; 100% optimizer window</div>
+      <div class="kpi-label">Operating Electricity Cost</div>
+      <div class="kpi-value">&euro;{{ "%.2f"|format(shadow.ledger.get('today_actual_cost_eur', shadow.ledger.get('electricity_cost_today_eur', 0.0)) if shadow.ledger else 0.0) }}</div>
+      <div class="kpi-sub">TES + backup + blower + aux</div>
     </div>
     <div class="kpi-card" style="margin-bottom: 0;">
-      <div class="kpi-label">Equivalent Sand Mass</div>
-      <div class="kpi-value">{{ "%.1f"|format(sand_mass_kg|default(275.7)) }}<span class="kpi-unit">kg</span></div>
-      <div class="kpi-sub">Quartz sand bulk density</div>
+      <div class="kpi-label">Heat Delivered to Dryer</div>
+      <div class="kpi-value">{{ "%.1f"|format(shadow.ledger.get('today_heat_delivered_kwh', shadow.ledger.get('heat_delivered_today_kwh', 0.0)) if shadow.ledger else 0.0) }}<span class="kpi-unit">kWh</span></div>
+      <div class="kpi-sub">Useful thermal enthalpy</div>
     </div>
     <div class="kpi-card" style="margin-bottom: 0;">
-      <div class="kpi-label">Available TES Charging Headroom</div>
-      <div class="kpi-value">{{ "%.2f"|format(available_tes_charging_headroom_kw|default(9.95)) }}<span class="kpi-unit">kW</span></div>
-      <div class="kpi-sub">12.0 kW grid - 2.0 kW site - 0.05 kW aux</div>
+      <div class="kpi-label">Water Evaporated (est.)</div>
+      <div class="kpi-value">{{ "%.1f"|format(system_state.dryer_water_removed_total_kg if system_state is defined and system_state else (shadow.dryer.get('water_removed_total_kg', shadow.dryer.get('batch_water_removed_kg', 0.0)) if shadow.dryer else 0.0)) }}<span class="kpi-unit">kg</span></div>
+      <div class="kpi-sub">Timber drying moisture</div>
     </div>
-    <div class="kpi-card" style="margin-bottom: 0;">
-      <div class="kpi-label">Remaining Grid Margin (at 9kW)</div>
-      <div class="kpi-value">{{ "%.2f"|format(remaining_grid_margin_kw|default(0.95)) }}<span class="kpi-unit">kW</span></div>
-      <div class="kpi-sub">Unused margin during charging</div>
+    <div class="kpi-card" style="margin-bottom: 0; background: #f0fdf4; border-color: #bbf7d0;">
+      <div class="kpi-label" style="color: #166534;">Net Savings vs Direct Electric</div>
+      <div class="kpi-value" style="color: #166534;">&euro;{{ "%.2f"|format(shadow.ledger.get('today_net_savings_eur', shadow.ledger.get('net_savings_today_eur', 0.0)) if shadow.ledger else 0.0) }}</div>
+      <div class="kpi-sub" style="color: #166534;">Inventory-adjusted (&Delta;V<sub>inv</sub>)</div>
     </div>
-  </div>
-
-  <div style="font-size: 0.8rem; color: #475569; background: #f8fafc; padding: 12px 16px; border-radius: 6px; border: 1px solid #e2e8f0;">
-    <strong>Helical Air Heat Exchanger Provisional Specification:</strong>
-    Tube Material: <strong>AISI 304L / EN 1.4307</strong> &bull;
-    Tube OD: <strong>60.3 mm</strong> &bull;
-    Coil Diameter: <strong>~420 mm</strong> &bull;
-    Effective Surface Area: <strong>1.55 m&sup2;</strong> &bull;
-    Reference U-value: <strong>9.0 W/m&sup2;K</strong>
   </div>
 </div>
 
-<!-- SHADOW RUNTIME TWIN CONTROLS & WORKER STATUS (Phase 5.8.2 / 5.9 Preserved) -->
-{% include "components/shadow_runtime_card.html" %}
+<!-- 9. QUICK DIGITAL TWIN CONTROLS & DEDICATED TECHNICAL MODULE NAVIGATION -->
+<div class="card" style="margin-bottom: 24px;">
+  <div class="card-header" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
+    <div>
+      <h3 class="card-title" style="margin: 0;">Digital Twin Operator Controls</h3>
+      <span style="font-size: 0.75rem; color: #64748b;">Zero hardware actuation &bull; Strictly autonomous cloud simulation</span>
+    </div>
+    <div style="display: flex; gap: 8px; flex-wrap: wrap; align-items: center;">
+      {% if not user or user.is_admin %}
+        {% if shadow.status != 'RUNNING' %}
+        <button type="button" class="btn btn-primary" onclick="openStartModal()" style="font-size: 0.8rem; padding: 6px 12px; background: #16a34a; border-color: #16a34a;">
+          ▶ START RUNTIME
+        </button>
+        {% endif %}
+        {% if shadow.status == 'RUNNING' %}
+        <button type="button" class="btn btn-outline" hx-post="/api/shadow/pause" hx-swap="none" style="font-size: 0.8rem; padding: 6px 12px; color: #d97706; border-color: #d97706;">
+          ❚❚ PAUSE
+        </button>
+        {% elif shadow.status == 'PAUSED' %}
+        <button type="button" class="btn btn-primary" hx-post="/api/shadow/resume" hx-swap="none" style="font-size: 0.8rem; padding: 6px 12px; background: #2563eb;">
+          ▶ RESUME
+        </button>
+        {% endif %}
+        <button type="button" class="btn btn-outline" hx-post="/api/shadow/reoptimize" hx-swap="none" style="font-size: 0.8rem; padding: 6px 12px;">
+          ⚡ REOPTIMIZE
+        </button>
+        <button type="button" class="btn btn-outline" onclick="openResetModal()" style="font-size: 0.8rem; padding: 6px 12px; color: #64748b;">
+          ↺ RESET SOC
+        </button>
+      {% endif %}
+    </div>
+  </div>
+
+  <div style="font-size: 0.8rem; color: #475569; margin-bottom: 14px;">
+    Detailed execution tables, engineering reference specifications, and worker diagnostics have been organized into dedicated technical pages:
+  </div>
+
+  <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 12px;">
+    <a href="/dashboard/dispatch" class="card" style="text-decoration: none; padding: 14px; margin-bottom: 0; border: 1px solid #e2e8f0; transition: border-color 0.2s;">
+      <div style="font-size: 0.75rem; color: #2563eb; font-weight: 700; text-transform: uppercase;">Market &amp; Dispatch</div>
+      <div style="font-size: 0.95rem; font-weight: 700; color: #0f172a; margin: 4px 0;">15-Min Operational Schedule</div>
+      <div style="font-size: 0.72rem; color: #64748b;">Receding-horizon optimizer timeline, grid load breakdown, and shadow execution tables &rarr;</div>
+    </a>
+
+    <a href="/dashboard/physical" class="card" style="text-decoration: none; padding: 14px; margin-bottom: 0; border: 1px solid #e2e8f0; transition: border-color 0.2s;">
+      <div style="font-size: 0.75rem; color: #ea580c; font-weight: 700; text-transform: uppercase;">TES Physical Model</div>
+      <div style="font-size: 0.95rem; font-weight: 700; color: #0f172a; margin: 4px 0;">Enthalpy &amp; Sand Bed</div>
+      <div style="font-size: 0.72rem; color: #64748b;">Canonical quartz enthalpy Cp(T_K), temperature-SOC conversion curves, and mass sizing &rarr;</div>
+    </a>
+
+    <a href="/dashboard/hx" class="card" style="text-decoration: none; padding: 14px; margin-bottom: 0; border: 1px solid #e2e8f0; transition: border-color 0.2s;">
+      <div style="font-size: 0.75rem; color: #0d9488; font-weight: 700; text-transform: uppercase;">Heat Exchanger &amp; Vessel</div>
+      <div style="font-size: 0.95rem; font-weight: 700; color: #0f172a; margin: 4px 0;">Helical HX &epsilon;-NTU &amp; Vessel</div>
+      <div style="font-size: 0.72rem; color: #64748b;">1.55 m&sup2; AISI 304L coil, U-value derating, vessel geometry, and containment fill heights &rarr;</div>
+    </a>
+
+    <a href="/dashboard/system-devices" class="card" style="text-decoration: none; padding: 14px; margin-bottom: 0; border: 1px solid #e2e8f0; transition: border-color 0.2s;">
+      <div style="font-size: 0.75rem; color: #64748b; font-weight: 700; text-transform: uppercase;">System Devices</div>
+      <div style="font-size: 0.95rem; font-weight: 700; color: #0f172a; margin: 4px 0;">Worker &amp; Diagnostics</div>
+      <div style="font-size: 0.72rem; color: #64748b;">24/7 background worker health, heartbeats, database maintenance, and connected device guards &rarr;</div>
+    </a>
+  </div>
+
+  <!-- Engineering Reference Baseline Summary (Provisional Specs & Headroom) -->
+  <div style="margin-top: 14px; padding: 12px 16px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; font-size: 0.78rem; color: #475569; display: flex; flex-direction: column; gap: 6px;">
+    <div style="display: flex; justify-content: space-between; flex-wrap: wrap; gap: 10px;">
+      <div>
+        <strong>Available TES Charging Headroom:</strong> <strong>{{ available_tes_charging_headroom_kw|default(9.95) }} kW</strong>
+        <span style="color: #64748b;">(12.0 kW grid limit &minus; 2.0 kW site load &minus; 0.05 kW aux)</span>
+      </div>
+      <div>
+        <strong>Remaining Grid Margin (at 9kW):</strong> <strong>{{ remaining_grid_margin_kw|default(0.95) }} kW</strong>
+        <span style="color: #64748b;">(unused breaker margin during full 9 kW charge)</span>
+      </div>
+    </div>
+    <div style="font-size: 0.75rem; color: #64748b; border-top: 1px solid #e2e8f0; padding-top: 6px;">
+      <strong>Provisional Helical HX Specification:</strong>
+      Tube: <strong>60.3 mm</strong> &bull;
+      Material: <strong>AISI 304L / EN 1.4307</strong> &bull;
+      Coil Diameter: <strong>~420 mm</strong> &bull;
+      Surface Area: <strong>1.55 m&sup2;</strong> &bull;
+      U-value: <strong>9.0 W/m&sup2;K</strong>
+    </div>
+  </div>
+</div>
+
 {% include "components/shadow_modals.html" %}
-{% include "components/runtime_status_card.html" %}
 
 {% endblock %}
 
@@ -527,6 +564,13 @@
             label: 'Dryer Supply Temp (°C)',
             data: [70, 70, 70, 70, 70, 70, 70, 70, 70],
             borderColor: '#0d9488',
+            backgroundColor: 'transparent',
+            tension: 0.2
+          },
+          {
+            label: 'Dryer Exhaust Temp (°C)',
+            data: [48, 48, 48, 48, 48, 48, 48, 48, 48],
+            borderColor: '#0284c7',
             backgroundColor: 'transparent',
             tension: 0.2
           },

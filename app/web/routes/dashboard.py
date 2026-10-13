@@ -364,6 +364,41 @@ def page_physical(request: Request, db: Session = Depends(get_db)):
     return templates.TemplateResponse(request=request, name="physical.html", context=ctx)
 
 
+@dashboard_router.get("/blueprint", response_class=HTMLResponse)
+def page_blueprint(request: Request, db: Session = Depends(get_db)):
+    """TES Blueprint: Concept engineering drawing, vessel cutaway, and physical specifications."""
+    ctx = get_common_context(request, "blueprint", db=db)
+    ctx.update({
+        "blueprint_image_url": "/static/img/gen0_tes_blueprint.png",
+        "drawing_title": "Gen0 Sand Battery TES — Concept Blueprint",
+        "drawing_subtitle": "Multi-Pass HX + 6 Cartridge Heaters (Preliminary Engineering Concept — Not for Fabrication)",
+        "revision": "Rev. A",
+        "scale": "NTS (Not to scale)",
+        "units": "mm (and kg, kW, m³/h)",
+        "vessel_diameter_mm": 600.0,
+        "vessel_height_mm": 950.0,
+        "vessel_gross_volume_l": 268.6,
+        "sand_reference_mass_kg": 275.7,
+        "sand_variant_300kg_volume_l": 187.5,
+        "sand_fill_height_300kg_mm": 752.8,
+        "freeboard_300kg_mm": 197.2,
+        "insulation_thickness_mm": 100.0,
+        "insulated_od_mm": 800.0,
+        "heater_total_kw": 9.0,
+        "heater_count": 6,
+        "heater_unit_kw": 1.5,
+        "hx_type": "Multi-pass straight-tube (vertical tubes with U-bend returns)",
+        "hx_od_mm": 60.3,
+        "hx_wall_mm": 2.0,
+        "hx_id_mm": 56.3,
+        "hx_length_m": "8.0 – 8.5",
+        "hx_area_m2": 1.55,
+        "hx_ref_airflow_m3_h": 80.0,
+        "hx_airflow_range_m3_h": "60 – 100",
+    })
+    return templates.TemplateResponse(request=request, name="blueprint.html", context=ctx)
+
+
 @dashboard_router.get("/hx", response_class=HTMLResponse)
 def page_hx(request: Request, db: Session = Depends(get_db)):
     """3. Heat Exchanger: Interactive epsilon-NTU model, presets, and derating curves."""

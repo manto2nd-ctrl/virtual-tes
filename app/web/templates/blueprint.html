@@ -1,0 +1,280 @@
+{% extends "base.html" %}
+
+{% block title %}TES Blueprint - Virtual TES Gen0{% endblock %}
+
+{% block content %}
+<div class="card-header" style="margin-bottom: 20px;">
+  <div>
+    <h2 style="font-size: 1.35rem; font-weight: 700; color: var(--text-main);">Gen0 Sand Battery TES — Concept Blueprint</h2>
+    <p style="color: var(--text-muted); font-size: 0.85rem; margin-top: 3px;">
+      Multi-Pass HX + 6 Cartridge Heaters &bull; Sectional Front View (Cutaway) &amp; Top View (Internal Layout)
+    </p>
+  </div>
+  <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+    <span class="badge badge-amber">CONCEPT ONLY — NOT FOR FABRICATION</span>
+    <span class="badge badge-blue">REV. A</span>
+    <span class="badge badge-gray">SCALE: NTS</span>
+  </div>
+</div>
+
+<div class="engineering-banner" style="margin-bottom: 24px;">
+  <div>
+    <strong>PRELIMINARY ENGINEERING DRAWING:</strong> Dimensions, component placements, and active lengths are based on current Gen0 reference specifications. 
+    <strong>HEATERS HEAT SAND; SEPARATE SEALED HX CARRIES PROCESS AIR — NO DIRECT CONNECTION.</strong>
+  </div>
+  <span class="badge badge-amber">&Oslash;600 &times; 950 mm SHELL</span>
+</div>
+
+<!-- Main Blueprint Interactive Viewer Card -->
+<div class="card" style="margin-bottom: 24px;">
+  <div class="card-header" style="padding-bottom: 12px; border-bottom: 1px solid var(--border-color);">
+    <div>
+      <h3 class="card-title" style="display: flex; align-items: center; gap: 8px;">
+        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"></rect><path d="M3 9h18M9 21V9"></path></svg>
+        <span>Technical Engineering Blueprint</span>
+      </h3>
+      <span style="font-size: 0.75rem; color: var(--text-muted);">Interactive High-Resolution Vector Rendering</span>
+    </div>
+
+    <!-- Viewer Toolbar Controls -->
+    <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+      <button type="button" class="btn btn-outline" style="padding: 4px 10px; font-size: 0.78rem;" onclick="zoomBlueprint(0.15)">
+        <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align: -2px;"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line><line x1="11" y1="8" x2="11" y2="14"></line><line x1="8" y1="11" x2="14" y2="11"></line></svg>
+        Zoom In
+      </button>
+      <button type="button" class="btn btn-outline" style="padding: 4px 10px; font-size: 0.78rem;" onclick="zoomBlueprint(-0.15)">
+        <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align: -2px;"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line><line x1="8" y1="11" x2="14" y2="11"></line></svg>
+        Zoom Out
+      </button>
+      <button type="button" class="btn btn-outline" style="padding: 4px 10px; font-size: 0.78rem;" onclick="resetBlueprintZoom()">
+        Reset Zoom
+      </button>
+      <button type="button" class="btn btn-outline" style="padding: 4px 10px; font-size: 0.78rem;" onclick="toggleBlueprintFit()">
+        Fit Width
+      </button>
+      <a href="{{ blueprint_image_url }}" target="_blank" rel="noopener" class="btn btn-primary" style="padding: 4px 12px; font-size: 0.78rem; text-decoration: none; display: inline-flex; align-items: center; gap: 6px;">
+        <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path><polyline points="15 3 21 3 21 9"></polyline><line x1="10" y1="14" x2="21" y2="3"></line></svg>
+        Open Full Resolution
+      </a>
+    </div>
+  </div>
+
+  <!-- Drawing Frame with Blueprint Aesthetics -->
+  <div id="blueprint-viewport" style="background: #0f172a; border-radius: 6px; padding: 16px; overflow: auto; text-align: center; position: relative; min-height: 520px; box-shadow: inset 0 2px 8px rgba(0,0,0,0.4);">
+    <div style="display: inline-block; transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1); transform-origin: top center;" id="blueprint-container">
+      <img id="blueprint-img" 
+           src="{{ blueprint_image_url }}" 
+           alt="Gen0 Sand Battery TES Concept Blueprint (Multi-Pass HX + 6 Cartridge Heaters)"
+           style="max-width: 100%; height: auto; display: block; margin: 0 auto; border-radius: 4px; box-shadow: 0 4px 20px rgba(0,0,0,0.5); cursor: zoom-in;"
+           onclick="zoomBlueprint(0.2)">
+    </div>
+  </div>
+
+  <div style="display: flex; justify-content: space-between; align-items: center; padding-top: 10px; font-size: 0.75rem; color: var(--text-muted);">
+    <span>Click image or use buttons above to zoom. Drag or scroll to pan within frame.</span>
+    <span>Source: <code>/static/img/gen0_tes_blueprint.png</code> (High-Res 789 KB)</span>
+  </div>
+</div>
+
+<!-- Specifications & Component Schedules Grid -->
+<div class="grid-2" style="margin-bottom: 24px;">
+  <!-- Vessel Specifications Table Card -->
+  <div class="card">
+    <div class="card-header">
+      <h3 class="card-title">Key Dimensions &amp; Specifications (TES Vessel)</h3>
+      <span class="badge badge-blue">VESSEL CONTAINMENT</span>
+    </div>
+    <div class="table-container">
+      <table class="engineering-table">
+        <tbody>
+          <tr>
+            <td><strong>Internal Shell Diameter (ID)</strong></td>
+            <td class="num-col"><strong>600 mm</strong></td>
+          </tr>
+          <tr>
+            <td>Straight Shell Height</td>
+            <td class="num-col">950 mm</td>
+          </tr>
+          <tr>
+            <td>Gross Internal Cylindrical Volume</td>
+            <td class="num-col">268.6 L (0.2686 m&sup3;)</td>
+          </tr>
+          <tr>
+            <td><strong>Reference Sand Mass (Quartz Sand)</strong></td>
+            <td class="num-col"><strong>275.7 kg</strong> (&asymp; 15.0 kWh full-span)</td>
+          </tr>
+          <tr>
+            <td>300 kg Sand Variant (Volume)</td>
+            <td class="num-col">300 kg (&asymp; 187.5 L)</td>
+          </tr>
+          <tr>
+            <td>Sand Fill Height at 300 kg</td>
+            <td class="num-col">752.8 mm</td>
+          </tr>
+          <tr>
+            <td>Freeboard Height at 300 kg</td>
+            <td class="num-col">197.2 mm (expansion allowance)</td>
+          </tr>
+          <tr>
+            <td>Thermal Insulation Thickness (min.)</td>
+            <td class="num-col">&ge; 100 mm (mineral/rock wool)</td>
+          </tr>
+          <tr>
+            <td>Approx. Insulated Outside Diameter</td>
+            <td class="num-col">&asymp; 800 mm + steel outer cladding</td>
+          </tr>
+          <tr>
+            <td><strong>Total Cartridge Heater Power</strong></td>
+            <td class="num-col"><strong style="color: var(--primary);">6 &times; 1.5 kW = 9.0 kW</strong></td>
+          </tr>
+          <tr>
+            <td>Heater Installation Architecture</td>
+            <td class="num-col">2 top-entry + 4 side-entry (closed drywells)</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Heat Exchanger (Air) Specifications Table Card -->
+  <div class="card">
+    <div class="card-header">
+      <h3 class="card-title">Heat Exchanger (Air) Specifications</h3>
+      <span class="badge badge-green">PNEUMATIC CIRCUIT</span>
+    </div>
+    <div class="table-container">
+      <table class="engineering-table">
+        <tbody>
+          <tr>
+            <td><strong>Exchanger Type</strong></td>
+            <td class="num-col">Multi-pass straight-tube (vertical with U-bends)</td>
+          </tr>
+          <tr>
+            <td>Tube Outside Diameter (OD)</td>
+            <td class="num-col"><strong>60.3 mm</strong></td>
+          </tr>
+          <tr>
+            <td>Tube Wall Thickness</td>
+            <td class="num-col">2.0 mm</td>
+          </tr>
+          <tr>
+            <td>Tube Inside Diameter (ID)</td>
+            <td class="num-col">56.3 mm (hydraulic passage)</td>
+          </tr>
+          <tr>
+            <td>Total Active Tube Length (Equivalent)</td>
+            <td class="num-col">&asymp; 8.0 &ndash; 8.5 m</td>
+          </tr>
+          <tr>
+            <td><strong>External Heat-Transfer Area</strong></td>
+            <td class="num-col"><strong style="color: var(--success);">&asymp; 1.55 m&sup2;</strong> (target, subject to validation)</td>
+          </tr>
+          <tr>
+            <td>Operating Airflow (Reference)</td>
+            <td class="num-col"><strong>80 m&sup3;/h</strong> (&asymp; 25.2 W/K heat capacity rate)</td>
+          </tr>
+          <tr>
+            <td>Airflow Operating Range</td>
+            <td class="num-col">&asymp; 60 &ndash; 100 m&sup3;/h</td>
+          </tr>
+          <tr>
+            <td>Inlet Air Connection</td>
+            <td class="num-col">Cool air from system (&asymp; 60&ndash;100 m&sup3;/h)</td>
+          </tr>
+          <tr>
+            <td>Outlet Air Connection</td>
+            <td class="num-col">Hot supply air to process (&asymp; 60&ndash;100 m&sup3;/h)</td>
+          </tr>
+          <tr>
+            <td>Atmospheric Isolation</td>
+            <td class="num-col"><strong>100% Sealed Air Loop</strong> &mdash; zero sand contamination</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- Component Key & Drawing General Notes -->
+<div class="card">
+  <div class="card-header">
+    <h3 class="card-title">Component Schedule &amp; Engineering Construction Notes</h3>
+    <span class="badge badge-gray">FABRICATION SCHEDULE</span>
+  </div>
+  <div class="table-container" style="margin-bottom: 16px;">
+    <table class="engineering-table">
+      <thead>
+        <tr>
+          <th style="width: 140px;">Identifier</th>
+          <th>Component Description &amp; Engineering Role</th>
+          <th style="width: 220px;">Installation Details</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><strong style="color: var(--primary);">H1, H2</strong></td>
+          <td>Top-entry electrical cartridge heaters (1.5 kW each = 3.0 kW total)</td>
+          <td>Vertical insertion into sealed drywell sleeves (separate from HX)</td>
+        </tr>
+        <tr>
+          <td><strong style="color: var(--primary);">H3 &ndash; H6</strong></td>
+          <td>Side-entry electrical cartridge heaters (1.5 kW each = 6.0 kW total)</td>
+          <td>Horizontal insertion at 90&deg; radial intervals (0&deg;, 90&deg;, 180&deg;, 270&deg;)</td>
+        </tr>
+        <tr>
+          <td><strong style="color: var(--success);">HX</strong></td>
+          <td>Multi-pass straight-tube air heat exchanger with vertical U-bend returns</td>
+          <td>Submerged in sand matrix; OD 60.3 mm, area &asymp; 1.55 m&sup2;</td>
+        </tr>
+        <tr>
+          <td><strong>TES VENT</strong></td>
+          <td>Atmospheric safety vent with rain cap</td>
+          <td>Top vessel head; relieves internal thermal expansion / moisture</td>
+        </tr>
+        <tr>
+          <td><strong>SAND DISCHARGE</strong></td>
+          <td>Flanged cleanout outlet for emptying sand inventory</td>
+          <td>Lower shell perimeter; remove cover ONLY when cold &amp; de-energized</td>
+        </tr>
+        <tr>
+          <td><strong>SUPPORT FEET</strong></td>
+          <td>Structural base mounting legs</td>
+          <td>3 or 4 heavy-duty load-bearing anchor pads</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div style="background: #f8fafc; border: 1px solid var(--border-color); border-radius: 6px; padding: 14px 18px;">
+    <h4 style="font-size: 0.82rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); margin-bottom: 8px;">Drawing Engineering Notes (Drawing Ref. Gen0-TES-REV-A):</h4>
+    <ol style="margin: 0; padding-left: 20px; font-size: 0.8rem; color: var(--text-main); line-height: 1.6;">
+      <li>Dimensions are based on current Gen0 design and are preliminary.</li>
+      <li>Total installed electrical heater power: 6 &times; 1.5 kW = 9.0 kW (2 top-entry, 4 side-entry).</li>
+      <li>Multi-pass straight-tube HX with total active length &asymp; 8.0&ndash;8.5 m and external surface area &asymp; 1.55 m&sup2; (targets, subject to experimental validation).</li>
+      <li>Reference operating airflow: 80 m&sup3;/h (design operating envelope 60&ndash;100 m&sup3;/h).</li>
+      <li>Insulation thickness: &ge; 100 mm mineral/rock wool with protective outer steel cladding (preliminary design).</li>
+      <li>Drawing illustrates engineering concept only &mdash; not for direct fabrication. Dimensions and internal details may be revised during physical prototyping.</li>
+    </ol>
+  </div>
+</div>
+
+<script>
+  let currentZoom = 1.0;
+  const container = document.getElementById('blueprint-container');
+
+  function zoomBlueprint(delta) {
+    currentZoom = Math.max(0.5, Math.min(3.0, currentZoom + delta));
+    container.style.transform = `scale(${currentZoom})`;
+  }
+
+  function resetBlueprintZoom() {
+    currentZoom = 1.0;
+    container.style.transform = 'scale(1.0)';
+  }
+
+  function toggleBlueprintFit() {
+    currentZoom = currentZoom === 1.0 ? 1.4 : 1.0;
+    container.style.transform = `scale(${currentZoom})`;
+  }
+</script>
+{% endblock %}

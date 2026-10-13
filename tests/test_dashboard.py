@@ -76,14 +76,29 @@ def client() -> TestClient:
         "/dashboard/sensitivity",
         "/dashboard/assumptions",
         "/dashboard/scenarios",
+        "/dashboard/blueprint",
     ],
 )
 def test_dashboard_pages_render_ok(client: TestClient, path: str):
-    """All 10 dashboard pages must render HTTP 200 with standard HTML structure."""
+    """All dashboard pages must render HTTP 200 with standard HTML structure."""
     resp = client.get(path)
     assert resp.status_code == 200, f"Path {path} returned status {resp.status_code}"
     assert "<!DOCTYPE html>" in resp.text
     assert "Virtual TES Gen0" in resp.text
+
+
+def test_blueprint_page_renders_with_drawing(client: TestClient):
+    """Verify /dashboard/blueprint renders drawing image, specifications, and notes."""
+    resp = client.get("/dashboard/blueprint")
+    assert resp.status_code == 200
+    assert "Gen0 Sand Battery TES — Concept Blueprint" in resp.text
+    assert "Multi-Pass HX + 6 Cartridge Heaters" in resp.text
+    assert "/static/img/gen0_tes_blueprint.png" in resp.text
+    assert "600 mm" in resp.text
+    assert "950 mm" in resp.text
+    assert "60.3 mm" in resp.text
+    assert "1.55 m" in resp.text
+    assert "CONCEPT ONLY — NOT FOR FABRICATION" in resp.text
 
 
 # ---------------------------------------------------------------------------

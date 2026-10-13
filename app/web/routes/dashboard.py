@@ -23,7 +23,7 @@ from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
 
 from app.auth.dependencies import UserSession, get_current_user, require_authenticated
-from app.backtest.domain import BacktestConfig
+from app.backtest.domain import BacktestConfig, BacktestStrategyMetrics
 from app.backtest.engine import (
     evaluate_cheapest_n_heuristic,
     evaluate_direct_electric_heating,
@@ -459,6 +459,23 @@ def page_economics(request: Request, db: Session = Depends(get_db)):
     cheapest = evaluate_cheapest_n_heuristic(intervals, prices, heat_demands, site_loads, config, tz)
     rolling = evaluate_realistic_rolling_lp(intervals, prices, heat_demands, site_loads, config, tz)
     foresight = evaluate_perfect_foresight_lp(intervals, prices, heat_demands, site_loads, config)
+
+    # Compute modeled cost savings relative to direct resistive electric baseline
+    c_direct = direct.total_cost_eur
+    def _with_savings(strat: BacktestStrategyMetrics) -> BacktestStrategyMetrics:
+        sav_eur = c_direct - strat.total_cost_eur
+        sav_pct = (sav_eur / c_direct * 100.0) if c_direct > 0 else 0.0
+        return BacktestStrategyMetrics(
+            **{
+                **strat.__dict__,
+                "savings_vs_direct_eur": sav_eur,
+                "savings_vs_direct_percent": sav_pct,
+            }
+        )
+
+    cheapest = _with_savings(cheapest)
+    rolling = _with_savings(rolling)
+    foresight = _with_savings(foresight)
 
     ctx.update({
         "direct": direct.to_dict(),

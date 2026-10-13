@@ -935,6 +935,11 @@ class ShadowRuntimeService:
                 optimization_price_basis=shadow_session.optimization_price_basis or "EFFECTIVE_VARIABLE_PRICE",
                 market_source=shadow_session.market_source or "LITGRID",
                 model_version=shadow_session.model_version or "gen0-shadow-v1",
+                execution_mode="MANUAL_REPLAY" if r_code == "REPLAY_CATCHUP" else "REALTIME_SHADOW",
+                actual_wallclock_utc=utcnow(),
+                simulation_run_id=shadow_session.id,
+                duration_hours=round(dt_h, 4),
+                price_data_classification="LIVE" if (shadow_session.market_source or "").upper() in ("LITGRID", "ELERING", "NORDPOOL") else "SYNTHETIC",
                 commit=False,
             )
         except Exception as ledger_err:
@@ -1355,12 +1360,24 @@ class ShadowRuntimeService:
 
         bess = BESSStatus()
 
+        from app.tes.thermal import calculate_tes_heat_autonomy_hours
+        autonomy = calculate_tes_heat_autonomy_hours(
+            stored_energy_kwh=sess.current_stored_energy_kwh,
+            process_demand_kw=sess.process_heat_demand_kw if sess.process_enabled else 0.0,
+            capacity_kwh=self.tes_params.capacity_kwh,
+            min_soc_fraction=self.tes_params.optimizer_soc_min_fraction,
+            discharge_efficiency=self.tes_params.discharge_efficiency,
+        )
+
         return {
             "session_id": sess.id,
             "status": sess.status,
             "execution_state": execution_state,
             "state_evolution": state_evolution,
             "planned_action": planned_action,
+            "autonomy": autonomy,
+            "autonomy_hours": autonomy["rated_autonomy_hours"],
+            "autonomy_theoretical_hours": autonomy["theoretical_autonomy_hours"],
             "local_time_vilnius": now_local.strftime("%H:%M:%S %Z"),
             "current_interval_vilnius": f"{curr_start_utc.astimezone(self.tz).strftime('%H:%M')} -> {curr_end_utc.astimezone(self.tz).strftime('%H:%M')}",
             "next_market_boundary": next_boundary_str,

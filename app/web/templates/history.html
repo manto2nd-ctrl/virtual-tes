@@ -338,8 +338,16 @@
           <tr>
             <td>
               <strong>{{ row.interval_start_local }}</strong>
+              <div style="font-size: 0.68rem; color: #64748b;" title="Simulated 15-minute interval duration">
+                Simulated 15m
+              </div>
+              {% if row.actual_wallclock_local %}
+              <div style="font-size: 0.68rem; color: #475569;" title="Actual wallclock time this interval was executed/committed">
+                Committed: {{ row.actual_wallclock_local[11:19] }}
+              </div>
+              {% endif %}
               {% if row.run_id and row.run_id != '-' %}
-              <div style="font-size: 0.70rem; color: #64748b; font-family: monospace;" title="Session: {{ row.run_id }}">
+              <div style="font-size: 0.68rem; color: #64748b; font-family: monospace;" title="Session: {{ row.run_id }}">
                 Run: {{ row.run_id[:8] }}
               </div>
               {% endif %}
@@ -390,11 +398,16 @@
               &euro;{{ "%.3f"|format(row.net_savings_eur|default(0.0)) }}
             </td>
             <td>
-              <span class="badge {% if row.provenance == 'MEASURED' %}badge-green{% elif row.provenance == 'SHADOW_PREDICTED' %}badge-blue{% else %}badge-slate{% endif %}" style="font-size: 0.68rem;">
-                {{ row.provenance }}
-              </span>
+              <div style="display: flex; flex-direction: column; gap: 3px;">
+                <span class="badge {% if row.execution_mode == 'REALTIME_SHADOW' %}badge-blue{% elif row.execution_mode == 'MANUAL_REPLAY' %}badge-amber{% else %}badge-slate{% endif %}" style="font-size: 0.64rem; padding: 1px 5px; font-weight: 600;">
+                  {{ row.execution_mode|default('REALTIME_SHADOW')|replace('_', ' ') }}
+                </span>
+                <span class="badge {% if row.price_data_classification == 'LIVE' %}badge-green{% elif row.price_data_classification == 'HISTORICAL' %}badge-blue{% else %}badge-slate{% endif %}" style="font-size: 0.62rem; padding: 1px 4px;">
+                  {{ row.price_data_classification|default('LIVE') }} &bull; {{ row.market_source|default('LITGRID') }}
+                </span>
+              </div>
               {% if row.moisture_content_percent is not none %}
-              <div style="font-size: 0.70rem; color: #0284c7; margin-top: 2px;">
+              <div style="font-size: 0.70rem; color: #0284c7; margin-top: 3px;">
                 Wood: {{ "%.1f"|format(row.moisture_content_percent) }}% ({{ "%.2f"|format(row.water_removed_kg|default(0.0)) }} kg)
               </div>
               {% endif %}

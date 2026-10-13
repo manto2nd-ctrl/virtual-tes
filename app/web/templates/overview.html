@@ -260,6 +260,10 @@
             <td class="num-col"><strong>{{ "%.2f"|format(shadow.dispatchable_remaining_kwh|default(7.80)) }} kWh</strong></td>
           </tr>
           <tr>
+            <td style="color: #64748b;">Heat Autonomy (Rated / Theor.):</td>
+            <td class="num-col" style="color: #0d9488;"><strong>{{ "%.1f"|format(shadow.autonomy_hours|default(5.2)) }} h</strong> / {{ "%.1f"|format(shadow.autonomy_theoretical_hours|default(5.2)) }} h</td>
+          </tr>
+          <tr>
             <td style="color: #64748b;">HX Output to Dryer:</td>
             <td class="num-col" style="color: #ea580c;"><strong>{{ "%.2f"|format(shadow.hx_actual_heat_kw|default(1.50)) }} kW</strong></td>
           </tr>
@@ -317,7 +321,7 @@
       </tr>
       <tr>
         <td style="color: #64748b;">Timber Mass (Dry Basis):</td>
-        <td class="num-col"><strong>{% if shadow.dryer %}{{ "%.0f"|format(shadow.dryer.get('batch_dry_mass_kg', 500.0)) }}{% else %}500{% endif %} kg</strong></td>
+        <td class="num-col"><strong>{% if shadow.dryer %}{{ "%.0f"|format(shadow.dryer.get('batch_dry_mass_kg', 50.0)) }}{% else %}50{% endif %} kg</strong></td>
       </tr>
       <tr>
         <td style="color: #64748b;">Moisture Content (Initial &rarr; Target):</td>
@@ -325,16 +329,16 @@
       </tr>
       <tr>
         <td style="color: #64748b;">Current Moisture Content:</td>
-        <td class="num-col"><strong style="color: #0284c7; font-size: 0.95rem;">{% if shadow.dryer %}{{ "%.1f"|format(shadow.dryer.get('current_moisture_percent', 32.0)) }}{% else %}32.0{% endif %} %</strong></td>
+        <td class="num-col"><strong style="color: #0284c7; font-size: 0.95rem;">{% if shadow.dryer and shadow.dryer.get('current_moisture_percent') is not none %}{{ "%.1f"|format(shadow.dryer.get('current_moisture_percent')) }} %{% else %}N/A{% endif %}</strong></td>
       </tr>
       <tr>
         <td style="color: #64748b;">Water Removed / Est. Remaining:</td>
-        <td class="num-col"><strong>{% if shadow.dryer %}{{ "%.1f"|format(shadow.dryer.get('water_removed_total_kg', shadow.dryer.get('batch_water_removed_kg', 45.0))) }}{% else %}45.0{% endif %} kg</strong> / {% if shadow.dryer %}{{ "%.1f"|format(shadow.dryer.get('estimated_remaining_hours', shadow.dryer.get('batch_est_remaining_hours', 18.0))) }}{% else %}18.0{% endif %} h</td>
+        <td class="num-col"><strong>{% if shadow.dryer %}{{ "%.1f"|format(shadow.dryer.get('water_removed_total_kg', shadow.dryer.get('batch_water_removed_kg', 0.0))) }}{% else %}0.0{% endif %} kg</strong> / {% if shadow.dryer and shadow.dryer.get('estimated_remaining_hours') is not none and shadow.dryer.get('estimated_remaining_hours') < 900 %}{{ "%.1f"|format(shadow.dryer.get('estimated_remaining_hours')) }} h{% else %}--{% endif %}</td>
       </tr>
     </table>
 
     <div style="margin-top: 10px;">
-      {% set prog_pct = [([shadow.dryer.get('batch_progress_percent', 36.0) if shadow.dryer else 36.0, 0]|max), 100]|min %}
+      {% set prog_pct = [([shadow.dryer.get('batch_progress_percent', 0.0) if shadow.dryer and shadow.dryer.get('batch_progress_percent') is not none else 0.0, 0]|max), 100]|min %}
       <div style="display: flex; justify-content: space-between; font-size: 0.75rem; margin-bottom: 4px;">
         <span style="color: #64748b;">Timber Batch Progress:</span>
         <strong>{{ "%.0f"|format(prog_pct) }}% complete</strong>
@@ -397,7 +401,7 @@
     </div>
     <div class="kpi-card" style="margin-bottom: 0;">
       <div class="kpi-label">Heat Delivered to Dryer</div>
-      <div class="kpi-value">{{ "%.1f"|format(shadow.ledger.get('today_heat_delivered_kwh', shadow.ledger.get('heat_delivered_today_kwh', 0.0)) if shadow.ledger else 0.0) }}<span class="kpi-unit">kWh</span></div>
+      <div class="kpi-value">{{ "%.1f"|format(shadow.ledger.get('today_heat_delivered_kwh', shadow.ledger.get('total_heat_delivered_kwh', shadow.ledger.get('heat_delivered_today_kwh', 0.0))) if shadow.ledger else 0.0) }}<span class="kpi-unit">kWh</span></div>
       <div class="kpi-sub">Useful thermal enthalpy</div>
     </div>
     <div class="kpi-card" style="margin-bottom: 0;">

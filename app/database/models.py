@@ -505,6 +505,17 @@ class EnergyLedgerInterval(Base):
     water_removed_kg: Mapped[float] = mapped_column(Float, default=0.0)
 
 
+    # Provenance & Simulation Mode (Phase 5.11.1)
+    execution_mode: Mapped[str] = mapped_column(String(32), default="REALTIME_SHADOW")  # REALTIME_SHADOW | ACCELERATED_BACKTEST | MANUAL_REPLAY
+    actual_wallclock_utc: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow)
+    simulation_run_id: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+    scenario_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    duration_hours: Mapped[float] = mapped_column(Float, default=0.25)
+
+    # Market Price Classification & Tariffs (Phase 5.11.1)
+    price_data_classification: Mapped[str] = mapped_column(String(32), default="LIVE")  # LIVE | HISTORICAL | FALLBACK | SYNTHETIC
+    tariff_snapshot_version: Mapped[str | None] = mapped_column(String(32), nullable=True)
+
     # Provenance & Audit
     data_provenance: Mapped[str] = mapped_column(String(32), default="SIMULATED")
     operating_mode: Mapped[str] = mapped_column(String(32), default="VIRTUAL")

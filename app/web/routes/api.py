@@ -1142,9 +1142,10 @@ async def update_dryer_config(
         except ValueError:
             pass
 
+    batch_reset_needed = False
     if "timber_mass_dry_kg" in body and body["timber_mass_dry_kg"]:
         cfg.timber_mass_dry_kg = float(body["timber_mass_dry_kg"])
-        _shadow_service.dryer_model.reset_batch(timber_mass_dry_kg=cfg.timber_mass_dry_kg)
+        batch_reset_needed = True
 
     if "board_thickness_mm" in body and body["board_thickness_mm"]:
         cfg.board_thickness_mm = float(body["board_thickness_mm"])
@@ -1160,9 +1161,18 @@ async def update_dryer_config(
 
     if "initial_moisture_percent" in body and body["initial_moisture_percent"]:
         cfg.initial_moisture_percent = float(body["initial_moisture_percent"])
+        batch_reset_needed = True
 
     if "target_moisture_percent" in body and body["target_moisture_percent"]:
         cfg.target_moisture_percent = float(body["target_moisture_percent"])
+        batch_reset_needed = True
+
+    if batch_reset_needed:
+        _shadow_service.dryer_model.reset_batch(
+            timber_mass_dry_kg=cfg.timber_mass_dry_kg,
+            initial_moisture_percent=cfg.initial_moisture_percent,
+            target_moisture_percent=cfg.target_moisture_percent,
+        )
 
     if "target_supply_temp_c" in body and body["target_supply_temp_c"]:
         cfg.target_supply_temp_c = float(body["target_supply_temp_c"])

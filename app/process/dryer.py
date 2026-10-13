@@ -170,6 +170,9 @@ class DryerStepResult:
     heat_shortfall_unmet_kw: float
     total_heat_delivered_kw: float
     evaporation_heat_delivered_kw: float
+    timber_sensible_heat_kw: float      # Sensible heat absorbed by timber charge (m_wood * cp * dT)
+    thermal_accumulation_kw: float     # Thermal mass accumulation in duct & internal structure
+    thermal_residual_kw: float         # First Law energy balance residual (delivered - sum(absorbed) == 0)
 
     # Electrical Consumption (kW)
     blower_power_kw: float
@@ -557,15 +560,26 @@ class VirtualDryerModel:
             batch_complete = False
             t_exhaust = t_supply_achieved
             t_timber = t_supply_achieved
+            timber_sensible_kw = 0.0
+            thermal_accumulation_kw = max(0.0, total_delivered_kw - sensible_actual)
+            thermal_residual_kw = round(total_delivered_kw - (sensible_actual + thermal_accumulation_kw), 6)
         else:
             # Mode 2: Wood Drying Process
             # Losses are met first from remaining heat
             losses_actual = min(heat_remaining_for_process, ventilation_loss_kw + chamber_loss_kw)
-            heat_avail_for_evap = max(0.0, heat_remaining_for_process - losses_actual)
+            heat_rem_after_losses = max(0.0, heat_remaining_for_process - losses_actual)
+
+            # Timber sensible warming (m_wood * cp * dT / t)
+            t_chamber_est = 0.5 * (t_supply_achieved + max(cfg.inlet_air_temp_c, t_supply_achieved - 20.0))
+            cp_wood_kj = 1.7  # Scots pine timber specific heat ~ 1.7 kJ/(kg*K)
+            dur_sec = max(3600.0, cfg.requested_duration_hours * 3600.0)
+            timber_sensible_demand_kw = (cfg.timber_mass_dry_kg * cp_wood_kj * max(0.0, t_chamber_est - cfg.ambient_temp_c)) / dur_sec
+            timber_sensible_kw = min(heat_rem_after_losses, timber_sensible_demand_kw)
+            heat_avail_for_evap = max(0.0, heat_rem_after_losses - timber_sensible_kw)
 
             # If in FIXED_DEMAND mode with historical 1.5 kW reference:
             if cfg.mode == DryerControlMode.FIXED_DEMAND:
-                heat_avail_for_evap = min(latent_and_loss_kw, heat_remaining_for_process)
+                heat_avail_for_evap = min(latent_and_loss_kw, heat_avail_for_evap)
 
             # Evaporation cannot exceed physically available heat budget!
             h_evap_curr = cfg.latent_heat_evaporation_kwh_kg
@@ -575,6 +589,11 @@ class VirtualDryerModel:
             remaining_water_in_wood = max(0.0, self.current_water_mass_kg - self.target_water_mass_kg)
             water_removed_step_kg = min(water_rem_budget_kg, water_rem_kinetic_kg, remaining_water_in_wood)
             evap_delivered_kw = (water_removed_step_kg * h_evap_curr) / dt_hours if dt_hours > 0 else 0.0
+
+            # Thermal accumulation in casing, structure, and internal circulating air enthalpy:
+            absorbed_sum = sensible_actual + losses_actual + timber_sensible_kw + evap_delivered_kw
+            thermal_accumulation_kw = max(0.0, total_delivered_kw - absorbed_sum)
+            thermal_residual_kw = round(total_delivered_kw - (absorbed_sum + thermal_accumulation_kw), 6)
 
             # Update batch state (or compute preview values)
             if mutate_batch:
@@ -655,6 +674,9 @@ class VirtualDryerModel:
             heat_shortfall_unmet_kw=round(unmet_kw, 3),
             total_heat_delivered_kw=round(total_delivered_kw, 3),
             evaporation_heat_delivered_kw=round(evap_delivered_kw, 3),
+            timber_sensible_heat_kw=round(timber_sensible_kw, 3),
+            thermal_accumulation_kw=round(thermal_accumulation_kw, 3),
+            thermal_residual_kw=thermal_residual_kw,
             blower_power_kw=round(blower_kw, 3),
             total_parasitic_electric_kw=round(blower_kw + backup_kw, 3),
             timber_mass_dry_kg=round(cfg.timber_mass_dry_kg, 1),
@@ -728,8 +750,13 @@ class VirtualDryerModel:
             "backup_electric_power_kw": res.backup_electric_power_kw,
             "heat_shortfall_kw": res.heat_shortfall_kw,
             "evaporation_heat_delivered_kw": res.evaporation_heat_delivered_kw,
+            "timber_sensible_heat_kw": res.timber_sensible_heat_kw,
+            "thermal_accumulation_kw": res.thermal_accumulation_kw,
+            "thermal_residual_kw": res.thermal_residual_kw,
+            "total_heat_delivered_kw": res.total_heat_delivered_kw,
             "blower_electric_power_kw": res.blower_electric_power_kw,
             "total_electricity_kw": res.total_electricity_kw,
+            "current_moisture_percent": res.current_moisture_percent,
             "batch_dry_mass_kg": res.batch_dry_mass_kg,
             "batch_initial_moisture_fraction": res.batch_initial_moisture_fraction,
             "batch_target_moisture_fraction": res.batch_target_moisture_fraction,

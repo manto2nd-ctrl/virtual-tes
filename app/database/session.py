@@ -143,9 +143,26 @@ def _migrate_columns_sqlite(engine: Engine) -> None:
                 conn.execute(text("ALTER TABLE energy_ledger_intervals ADD COLUMN stored_energy_start_kwh FLOAT"))
             if "stored_energy_end_kwh" not in eli_cols:
                 conn.execute(text("ALTER TABLE energy_ledger_intervals ADD COLUMN stored_energy_end_kwh FLOAT"))
+            # Phase 5.11.1: Simulation timing, interval identity & price classification
+            if "execution_mode" not in eli_cols:
+                conn.execute(text("ALTER TABLE energy_ledger_intervals ADD COLUMN execution_mode VARCHAR(32) DEFAULT 'REALTIME_SHADOW'"))
+            if "actual_wallclock_utc" not in eli_cols:
+                conn.execute(text("ALTER TABLE energy_ledger_intervals ADD COLUMN actual_wallclock_utc DATETIME"))
+            if "simulation_run_id" not in eli_cols:
+                conn.execute(text("ALTER TABLE energy_ledger_intervals ADD COLUMN simulation_run_id VARCHAR(64)"))
+            if "scenario_id" not in eli_cols:
+                conn.execute(text("ALTER TABLE energy_ledger_intervals ADD COLUMN scenario_id VARCHAR(64)"))
+            if "duration_hours" not in eli_cols:
+                conn.execute(text("ALTER TABLE energy_ledger_intervals ADD COLUMN duration_hours FLOAT DEFAULT 0.25"))
+            if "price_data_classification" not in eli_cols:
+                conn.execute(text("ALTER TABLE energy_ledger_intervals ADD COLUMN price_data_classification VARCHAR(32) DEFAULT 'LIVE'"))
+            if "tariff_snapshot_version" not in eli_cols:
+                conn.execute(text("ALTER TABLE energy_ledger_intervals ADD COLUMN tariff_snapshot_version VARCHAR(32)"))
+
             conn.execute(text("CREATE INDEX IF NOT EXISTS ix_ledger_start_utc ON energy_ledger_intervals (interval_start_utc)"))
             conn.execute(text("CREATE INDEX IF NOT EXISTS ix_ledger_site_start ON energy_ledger_intervals (site_id, interval_start_utc)"))
             conn.execute(text("CREATE INDEX IF NOT EXISTS ix_ledger_session_id ON energy_ledger_intervals (shadow_session_id)"))
+            conn.execute(text("CREATE INDEX IF NOT EXISTS ix_ledger_mode ON energy_ledger_intervals (execution_mode)"))
 
 
 def _migrate_columns_postgres(engine: Engine) -> None:
@@ -160,9 +177,19 @@ def _migrate_columns_postgres(engine: Engine) -> None:
         conn.execute(text("ALTER TABLE energy_ledger_intervals ADD COLUMN IF NOT EXISTS unmet_heat_kw FLOAT DEFAULT 0.0"))
         conn.execute(text("ALTER TABLE energy_ledger_intervals ADD COLUMN IF NOT EXISTS stored_energy_start_kwh FLOAT"))
         conn.execute(text("ALTER TABLE energy_ledger_intervals ADD COLUMN IF NOT EXISTS stored_energy_end_kwh FLOAT"))
+        # Phase 5.11.1 columns
+        conn.execute(text("ALTER TABLE energy_ledger_intervals ADD COLUMN IF NOT EXISTS execution_mode VARCHAR(32) DEFAULT 'REALTIME_SHADOW'"))
+        conn.execute(text("ALTER TABLE energy_ledger_intervals ADD COLUMN IF NOT EXISTS actual_wallclock_utc TIMESTAMPTZ"))
+        conn.execute(text("ALTER TABLE energy_ledger_intervals ADD COLUMN IF NOT EXISTS simulation_run_id VARCHAR(64)"))
+        conn.execute(text("ALTER TABLE energy_ledger_intervals ADD COLUMN IF NOT EXISTS scenario_id VARCHAR(64)"))
+        conn.execute(text("ALTER TABLE energy_ledger_intervals ADD COLUMN IF NOT EXISTS duration_hours FLOAT DEFAULT 0.25"))
+        conn.execute(text("ALTER TABLE energy_ledger_intervals ADD COLUMN IF NOT EXISTS price_data_classification VARCHAR(32) DEFAULT 'LIVE'"))
+        conn.execute(text("ALTER TABLE energy_ledger_intervals ADD COLUMN IF NOT EXISTS tariff_snapshot_version VARCHAR(32)"))
+
         conn.execute(text("CREATE INDEX IF NOT EXISTS ix_ledger_start_utc ON energy_ledger_intervals (interval_start_utc)"))
         conn.execute(text("CREATE INDEX IF NOT EXISTS ix_ledger_site_start ON energy_ledger_intervals (site_id, interval_start_utc)"))
         conn.execute(text("CREATE INDEX IF NOT EXISTS ix_ledger_session_id ON energy_ledger_intervals (shadow_session_id)"))
+        conn.execute(text("CREATE INDEX IF NOT EXISTS ix_ledger_mode ON energy_ledger_intervals (execution_mode)"))
 
 
 def init_db(engine: Engine) -> None:

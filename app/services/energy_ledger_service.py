@@ -112,12 +112,21 @@ class EnergyLedgerService:
         optimization_price_basis: str = "EFFECTIVE_VARIABLE_PRICE",
         market_source: str = "LITGRID",
         model_version: str = "gen0-shadow-v1",
+        execution_mode: str = "REALTIME_SHADOW",
+        actual_wallclock_utc: datetime | None = None,
+        simulation_run_id: str | None = None,
+        scenario_id: str | None = None,
+        duration_hours: float | None = None,
+        price_data_classification: str = "LIVE",
+        tariff_snapshot_version: str | None = None,
         commit: bool = True,
     ) -> EnergyLedgerInterval:
         """Persist or update an immutable settlement ledger interval."""
         start_utc = ensure_utc(interval_start_utc)
         end_utc = ensure_utc(interval_end_utc)
         duration_min = int(round((end_utc - start_utc).total_seconds() / 60.0))
+        dur_h = float(duration_hours) if duration_hours is not None else max(0.01, duration_min / 60.0)
+        wallclock_now = ensure_utc(actual_wallclock_utc) if actual_wallclock_utc is not None else utcnow()
 
         fin = self.calculate_interval_finances(
             heat_delivered_kwh=dryer_thermal_delivered_kwh,
@@ -181,6 +190,16 @@ class EnergyLedgerService:
             existing.water_removed_kg = water_removed_kg
             existing.data_provenance = data_provenance
             existing.operating_mode = operating_mode
+            existing.execution_mode = execution_mode
+            existing.actual_wallclock_utc = wallclock_now
+            if simulation_run_id:
+                existing.simulation_run_id = simulation_run_id
+            if scenario_id:
+                existing.scenario_id = scenario_id
+            existing.duration_hours = dur_h
+            existing.price_data_classification = price_data_classification
+            if tariff_snapshot_version:
+                existing.tariff_snapshot_version = tariff_snapshot_version
             record = existing
         else:
             record = EnergyLedgerInterval(
@@ -221,6 +240,13 @@ class EnergyLedgerService:
                 water_removed_kg=water_removed_kg,
                 data_provenance=data_provenance,
                 operating_mode=operating_mode,
+                execution_mode=execution_mode,
+                actual_wallclock_utc=wallclock_now,
+                simulation_run_id=simulation_run_id,
+                scenario_id=scenario_id,
+                duration_hours=dur_h,
+                price_data_classification=price_data_classification,
+                tariff_snapshot_version=tariff_snapshot_version,
             )
             db.add(record)
 
@@ -412,6 +438,8 @@ class EnergyLedgerService:
             "tes_electricity_used_kwh": round(tot_tes_charge_kwh, 2),
             "tes_charging_cost_eur": round(tot_tes_charging_cost_eur, 2),
             "total_heat_delivered_kwh": round(tot_heat_kwh, 2),
+            "today_heat_delivered_kwh": round(tot_heat_kwh, 2),
+            "heat_delivered_today_kwh": round(tot_heat_kwh, 2),
             "water_removed_kg": round(tot_water_kg, 2),
             "water_removed_est_kg": round(tot_water_kg, 1),
             "dryer_operating_cost_eur": round(tot_dryer_operating_cost_eur, 2),
@@ -596,6 +624,14 @@ class EnergyLedgerService:
                 "thermal_energy_per_kg_water_kwh": specific_thermal,
                 "provenance": r.data_provenance,
                 "operating_mode": r.operating_mode,
+                "execution_mode": r.execution_mode or "REALTIME_SHADOW",
+                "actual_wallclock_utc": (r.actual_wallclock_utc or r.created_at_utc).isoformat(),
+                "actual_wallclock_local": (r.actual_wallclock_utc or r.created_at_utc).astimezone(self.tz).strftime("%Y-%m-%d %H:%M:%S"),
+                "simulation_run_id": r.simulation_run_id or "-",
+                "scenario_id": r.scenario_id or "-",
+                "duration_hours": round((r.duration_hours or dur_hours), 2),
+                "price_data_classification": r.price_data_classification or "LIVE",
+                "tariff_snapshot_version": r.tariff_snapshot_version or "default",
             })
 
         return {
@@ -647,6 +683,10 @@ class EnergyLedgerService:
             "Market Source",
             "Model Version",
             "Provenance",
+            "Execution Mode",
+            "Wall-Clock Executed (UTC)",
+            "Price Classification",
+            "Tariff Version",
             "TES Charging Cost (EUR)",
             "Dryer Operating Cost (EUR)",
             "Specific Thermal (kWh/kg)",
@@ -690,6 +730,10 @@ class EnergyLedgerService:
                 r.get("market_source", "LITGRID"),
                 r.get("model_version", "gen0-shadow-v1"),
                 r["provenance"],
+                r.get("execution_mode", "REALTIME_SHADOW"),
+                r.get("actual_wallclock_utc", ""),
+                r.get("price_data_classification", "LIVE"),
+                r.get("tariff_snapshot_version", "default"),
                 r.get("tes_charging_cost_eur", 0.0),
                 r.get("dryer_operating_cost_eur", 0.0),
                 r.get("thermal_energy_per_kg_water_kwh", 0.63),

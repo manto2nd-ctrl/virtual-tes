@@ -60,8 +60,9 @@
       <thead>
         <tr>
           <th>Full-Span Capacity</th>
+          <th>Vessel Fit</th>
           <th>Dispatchable Cap</th>
-          <th>Sand Mass</th>
+          <th>Sand Mass / Vol</th>
           <th>Configured Charge Power Limit</th>
           <th>Peak Actual Charge Power (Grid-Clipped)</th>
           <th>Reliability</th>
@@ -76,8 +77,18 @@
         {% for c in combinations %}
         <tr>
           <td><strong>{{ "%.1f"|format(c.thermal_capacity_full_span_kwh) }} kWh</strong></td>
+          <td>
+            {% if c.fits_gen0_vessel %}
+            <span class="badge badge-green" style="font-size: 0.7rem;">GEN0 FIT</span>
+            {% else %}
+            <span class="badge badge-amber" style="font-size: 0.7rem;" title="Sand volume ({{ c.sand_volume_liters }}L) exceeds Gen0 172.3L vessel containment">EXCEEDS 172L</span>
+            {% endif %}
+          </td>
           <td class="num-col">{{ "%.1f"|format(c.dispatchable_capacity_kwh) }} kWh</td>
-          <td class="num-col">{{ "%.1f"|format(c.sand_mass_kg) }} kg</td>
+          <td class="num-col">
+            {{ "%.1f"|format(c.sand_mass_kg) }} kg
+            <div style="font-size: 0.7rem; color: var(--text-muted);">{{ "%.1f"|format(c.sand_volume_liters) }} L</div>
+          </td>
           <td class="num-col">{{ "%.1f"|format(c.configured_charge_power_limit_kw) }} kW</td>
           <td class="num-col" style="{% if c.peak_actual_charge_power_kw < c.configured_charge_power_limit_kw %}color: #d97706; font-weight: 600;{% endif %}">
             {{ "%.2f"|format(c.peak_actual_charge_power_kw) }} kW

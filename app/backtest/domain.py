@@ -212,6 +212,9 @@ class SizingCombinationResult:
     peak_actual_charge_power_kw: float = 0.0
     grid_connection_limit_kw: float = 12.0
     peak_total_grid_power_kw: float = 0.0
+    sand_volume_liters: float = 172.3
+    fits_gen0_vessel: bool = True
+    vessel_feasibility_status: str = "GEN0 PROTOTYPE FIT"
 
     def __post_init__(self) -> None:
         if self.capacity_kwh > 0:
@@ -222,6 +225,12 @@ class SizingCombinationResult:
             from app.tes.thermal import ThermalStateMapper
             mapper = ThermalStateMapper(t_min_c=80.0, t_max_c=300.0)
             object.__setattr__(self, "temperature_at_optimizer_min_soc_c", mapper.temperature_from_soc_fraction(self.optimizer_soc_min_fraction))
+            vol = (self.sand_mass_kg / 1.6) if self.sand_mass_kg > 0 else (self.capacity_kwh / 15.0 * 172.3)
+            object.__setattr__(self, "sand_volume_liters", round(vol, 1))
+            fits = self.capacity_kwh <= 15.001
+            object.__setattr__(self, "fits_gen0_vessel", fits)
+            status = "GEN0 PROTOTYPE FIT" if fits else "EXCEEDS 172.3L VESSEL"
+            object.__setattr__(self, "vessel_feasibility_status", status)
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)

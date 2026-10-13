@@ -325,3 +325,112 @@ class HelicalAirHXModel:
         max_p = max(pt[1] for pt in points)
         bounds.append((0.0, max_p))
         return bounds
+
+
+def calculate_tes_heat_autonomy_hours(
+    stored_energy_kwh: float,
+    process_demand_kw: float,
+    capacity_kwh: float = 15.0,
+    min_soc_fraction: float = 0.10,
+    hx_model: HelicalAirHXModel | None = None,
+    discharge_efficiency: float = 0.90,
+    ua_standing_loss_w_k: float = 0.5,
+    ambient_temp_c: float = 20.0,
+    max_simulation_hours: float = 72.0,
+) -> dict[str, Any]:
+    """Calculate physics-informed deliverable process heat autonomy hours for Gen0 TES.
+    
+    Distinguishes:
+      1. Rated deliverable autonomy (accounting for ε-NTU heat exchanger pinch point derating:
+         autonomy terminates as soon as sand cools enough that P_HX,max < P_demand, or SOC <= min_soc).
+      2. Theoretical autonomy (unconstrained E_usable / P_demand).
+    """
+    if process_demand_kw <= 0.0:
+        return {
+            "rated_autonomy_hours": 999.0,
+            "theoretical_autonomy_hours": 999.0,
+            "limiting_factor": "ZERO_DEMAND",
+            "pinch_temperature_c": 40.0,
+            "pinch_soc_percent": 0.0,
+            "initial_sand_temperature_c": 197.8,
+            "initial_soc_percent": round((stored_energy_kwh / max(1.0, capacity_kwh)) * 100.0, 1),
+            "initial_hx_power_kw": 0.0,
+        }
+
+    hx = hx_model or HelicalAirHXModel()
+    mapper = hx.mapper
+    cap = max(0.1, capacity_kwh)
+    min_energy = cap * min_soc_fraction
+    eff_discharge = max(0.1, min(1.0, discharge_efficiency))
+
+    # Initial condition
+    e_curr = max(0.0, float(stored_energy_kwh))
+    soc_init = min(1.0, max(0.0, e_curr / cap))
+    t_init = mapper.temperature_from_soc_fraction(soc_init)
+    p_init = hx.p_max_at_temperature_kw(t_init)
+
+    # Theoretical autonomy (simple energy capacity division)
+    usable_energy = max(0.0, e_curr - min_energy)
+    theoretical_hours = (usable_energy * eff_discharge) / process_demand_kw
+
+    # Check analytical pinch point temperature where P_HX,max == process_demand_kw
+    # Q_w = eps * C_air * (T_sand - T_inlet) => delta_T = Q_w / (eps * C_air)
+    if hx.effectiveness > 0 and hx.c_air_w_k > 0:
+        delta_t_pinch = (process_demand_kw * 1000.0) / (hx.effectiveness * hx.c_air_w_k)
+        t_pinch = hx.air_inlet_temperature_c + delta_t_pinch
+        soc_pinch = mapper.soc_fraction_from_temperature(t_pinch)
+    else:
+        t_pinch = 80.0
+        soc_pinch = 0.10
+
+    if p_init < process_demand_kw - 1e-4:
+        return {
+            "rated_autonomy_hours": 0.0,
+            "theoretical_autonomy_hours": round(theoretical_hours, 2),
+            "limiting_factor": "INSUFFICIENT_INITIAL_POWER",
+            "pinch_temperature_c": round(t_pinch, 1),
+            "pinch_soc_percent": round(soc_pinch * 100.0, 1),
+            "initial_sand_temperature_c": round(t_init, 1),
+            "initial_soc_percent": round(soc_init * 100.0, 1),
+            "initial_hx_power_kw": round(p_init, 2),
+        }
+
+    # Forward forward integration simulation
+    dt_h = 0.05  # 3 minutes step
+    sim_t = 0.0
+    limiting_factor = "ENERGY_CAPACITY"
+
+    while sim_t < max_simulation_hours:
+        soc_f = min(1.0, max(0.0, e_curr / cap))
+        t_sand = mapper.temperature_from_soc_fraction(soc_f)
+        p_hx_max = hx.p_max_at_temperature_kw(t_sand)
+
+        # Check HX derating bottleneck
+        if p_hx_max < process_demand_kw - 1e-4:
+            limiting_factor = "HEAT_EXCHANGER_PINCH"
+            break
+
+        # Check minimum SOC capacity boundary
+        if e_curr <= min_energy + 1e-4:
+            limiting_factor = "ENERGY_CAPACITY"
+            break
+
+        # Loss and discharge depletion
+        loss_kw = (ua_standing_loss_w_k * max(0.0, t_sand - ambient_temp_c)) / 1000.0
+        delta_e = ((process_demand_kw / eff_discharge) + loss_kw) * dt_h
+
+        e_curr = max(0.0, e_curr - delta_e)
+        sim_t += dt_h
+
+    rated_hours = round(sim_t, 2)
+
+    return {
+        "rated_autonomy_hours": rated_hours,
+        "theoretical_autonomy_hours": round(theoretical_hours, 2),
+        "limiting_factor": limiting_factor,
+        "pinch_temperature_c": round(t_pinch, 1),
+        "pinch_soc_percent": round(soc_pinch * 100.0, 1),
+        "initial_sand_temperature_c": round(t_init, 1),
+        "initial_soc_percent": round(soc_init * 100.0, 1),
+        "initial_hx_power_kw": round(p_init, 2),
+    }

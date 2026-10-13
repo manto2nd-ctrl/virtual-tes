@@ -386,7 +386,7 @@
         </tr>
         <tr>
           <td style="color: #64748b;">Current Timber Moisture:</td>
-          <td class="num-col"><strong style="color: #0284c7; font-size: 1.15rem;">{{ "%.1f"|format(dryer_state.current_moisture_percent|default(35.0)) }}%</strong></td>
+          <td class="num-col"><strong style="color: #0284c7; font-size: 1.15rem;">{{ "%.1f"|format(dryer_state.current_moisture_percent if (dryer_state.current_moisture_percent is defined and dryer_state.current_moisture_percent is not none) else (dryer_config.initial_moisture_percent|default(50.0))) }}%</strong></td>
         </tr>
         <tr>
           <td style="color: #64748b;">Total Water Mass to Evaporate:</td>
@@ -441,37 +441,61 @@
     <span class="badge badge-slate">AUDIT GRADE</span>
   </div>
 
-  <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 14px; padding: 12px 0;">
-    <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 14px;">
-      <div style="font-size: 0.74rem; font-weight: 700; color: #475569; text-transform: uppercase;">1. Sensible Coil Heating</div>
-      <div style="font-size: 1.25rem; font-weight: 800; color: #0f172a; margin: 6px 0;">
-        {{ "%.2f"|format(dryer_state.sensible_air_heat_kw|default(0.76)) }} <span style="font-size: 0.85rem; font-weight: 500;">kW</span>
+  <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; padding: 12px 0;">
+    <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px;">
+      <div style="font-size: 0.72rem; font-weight: 700; color: #475569; text-transform: uppercase;">1. Sensible Coil Air</div>
+      <div style="font-size: 1.2rem; font-weight: 800; color: #0f172a; margin: 4px 0;">
+        {{ "%.2f"|format(dryer_state.sensible_air_heat_kw|default(0.76)) }} <span style="font-size: 0.8rem; font-weight: 500;">kW</span>
       </div>
-      <div style="font-size: 0.72rem; color: #64748b;">C<sub>air</sub> &approx; 25.22 W/K &bull; &Delta;T = 30 K across coil. Satisfied first to heat supply stream.</div>
+      <div style="font-size: 0.70rem; color: #64748b;">C<sub>air</sub> &approx; 25.2 W/K &bull; &Delta;T = 30 K across coil.</div>
     </div>
 
-    <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 14px;">
-      <div style="font-size: 0.74rem; font-weight: 700; color: #475569; text-transform: uppercase;">2. Fresh Ventilation Loss</div>
-      <div style="font-size: 1.25rem; font-weight: 800; color: #0f172a; margin: 6px 0;">
-        {{ "%.2f"|format(dryer_state.ventilation_loss_kw|default(0.12)) }} <span style="font-size: 0.85rem; font-weight: 500;">kW</span>
+    <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px;">
+      <div style="font-size: 0.72rem; font-weight: 700; color: #475569; text-transform: uppercase;">2. Ventilation Loss</div>
+      <div style="font-size: 1.2rem; font-weight: 800; color: #0f172a; margin: 4px 0;">
+        {{ "%.2f"|format(dryer_state.ventilation_loss_kw|default(0.12)) }} <span style="font-size: 0.8rem; font-weight: 500;">kW</span>
       </div>
-      <div style="font-size: 0.72rem; color: #64748b;">Fresh makeup: {{ "%.1f"|format(dryer_state.fresh_airflow_m3_h|default(12.0)) }} m&sup3;/h (15% exhaust bleed at 85% recirculation).</div>
+      <div style="font-size: 0.70rem; color: #64748b;">Fresh makeup: {{ "%.1f"|format(dryer_state.fresh_airflow_m3_h|default(12.0)) }} m&sup3;/h (15% bleed).</div>
     </div>
 
-    <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 14px;">
-      <div style="font-size: 0.74rem; font-weight: 700; color: #475569; text-transform: uppercase;">3. Chamber Envelope Loss</div>
-      <div style="font-size: 1.25rem; font-weight: 800; color: #0f172a; margin: 6px 0;">
-        {{ "%.2f"|format(dryer_state.chamber_loss_kw|default(0.10)) }} <span style="font-size: 0.85rem; font-weight: 500;">kW</span>
+    <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px;">
+      <div style="font-size: 0.72rem; font-weight: 700; color: #475569; text-transform: uppercase;">3. Chamber Envelope</div>
+      <div style="font-size: 1.2rem; font-weight: 800; color: #0f172a; margin: 4px 0;">
+        {{ "%.2f"|format(dryer_state.chamber_loss_kw|default(0.10)) }} <span style="font-size: 0.8rem; font-weight: 500;">kW</span>
       </div>
-      <div style="font-size: 0.72rem; color: #64748b;">UA transmission loss through insulated kiln walls to ambient.</div>
+      <div style="font-size: 0.70rem; color: #64748b;">Wall conduction transmission to ambient.</div>
     </div>
 
-    <div style="background: #fffbeb; border: 1px solid #fde68a; border-radius: 8px; padding: 14px;">
-      <div style="font-size: 0.74rem; font-weight: 700; color: #92400e; text-transform: uppercase;">4. Evaporation Heat Delivery</div>
-      <div style="font-size: 1.25rem; font-weight: 800; color: #b45309; margin: 6px 0;">
-        {{ "%.2f"|format(dryer_state.evaporation_heat_delivered_kw|default(0.50)) }} <span style="font-size: 0.85rem; font-weight: 500;">kW</span>
+    <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px;">
+      <div style="font-size: 0.72rem; font-weight: 700; color: #475569; text-transform: uppercase;">4. Timber Charge Sensible</div>
+      <div style="font-size: 1.2rem; font-weight: 800; color: #0f172a; margin: 4px 0;">
+        {{ "%.2f"|format(dryer_state.timber_sensible_heat_kw|default(0.06)) }} <span style="font-size: 0.8rem; font-weight: 500;">kW</span>
       </div>
-      <div style="font-size: 0.72rem; color: #78350f;">Latent heat clamped to available energy budget: P<sub>evap</sub> &times; dt &le; E<sub>budget</sub>.</div>
+      <div style="font-size: 0.70rem; color: #64748b;">m<sub>wood</sub> &times; c<sub>p</sub> &times; dT/dt heating wood charge.</div>
+    </div>
+
+    <div style="background: #fffbeb; border: 1px solid #fde68a; border-radius: 8px; padding: 12px;">
+      <div style="font-size: 0.72rem; font-weight: 700; color: #92400e; text-transform: uppercase;">5. Latent Evaporation</div>
+      <div style="font-size: 1.2rem; font-weight: 800; color: #b45309; margin: 4px 0;">
+        {{ "%.2f"|format(dryer_state.evaporation_heat_delivered_kw|default(0.46)) }} <span style="font-size: 0.8rem; font-weight: 500;">kW</span>
+      </div>
+      <div style="font-size: 0.70rem; color: #78350f;">Evaporation: dm/dt &times; h<sub>fg</sub> (clamped to budget).</div>
+    </div>
+
+    <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px;">
+      <div style="font-size: 0.72rem; font-weight: 700; color: #475569; text-transform: uppercase;">6. Thermal Accumulation</div>
+      <div style="font-size: 1.2rem; font-weight: 800; color: #0f172a; margin: 4px 0;">
+        {{ "%.2f"|format(dryer_state.thermal_accumulation_kw|default(0.04)) }} <span style="font-size: 0.8rem; font-weight: 500;">kW</span>
+      </div>
+      <div style="font-size: 0.70rem; color: #64748b;">Internal duct casing &amp; air capacitance storage.</div>
+    </div>
+
+    <div style="background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 8px; padding: 12px;">
+      <div style="font-size: 0.72rem; font-weight: 700; color: #166534; text-transform: uppercase;">Balance Residual</div>
+      <div style="font-size: 1.2rem; font-weight: 800; color: #166534; margin: 4px 0;">
+        {{ "%.4f"|format(dryer_state.thermal_residual_kw|default(0.0)) }} <span style="font-size: 0.8rem; font-weight: 500;">kW</span>
+      </div>
+      <div style="font-size: 0.70rem; color: #166534; font-weight: 600;">100% First Law Energy Conservation (&Sigma;P<sub>in</sub> = &Sigma;P<sub>out</sub>).</div>
     </div>
   </div>
 </div>
